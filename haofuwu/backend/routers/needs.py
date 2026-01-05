@@ -40,11 +40,25 @@ def list_needs(
 
 
 # ==========================================
-# 3. 获取“我的”需求列表
+# 3. 获取“我的”需求列表（支持分页和筛选）
 # ==========================================
 @router.get("/my-list")
-def my_needs(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    return {"code": 200, "msg": "ok", "data": crud.get_needs_my_list(db, current_user.id)}
+def my_needs(
+        pageNum: int = Query(1, ge=1),
+        pageSize: int = Query(15, ge=1, le=200),
+        keyword: str = None,
+        serviceType: str = None,
+        db: Session = Depends(get_db),
+        current_user: models.User = Depends(get_current_user)
+):
+    # 获取所有匹配的需求
+    all_needs = crud.get_needs_my_list(db, current_user.id, keyword=keyword, service_type=serviceType)
+    total = len(all_needs)
+    # 简单分页
+    start = (pageNum - 1) * pageSize
+    end = start + pageSize
+    records = all_needs[start:end]
+    return {"code": 200, "msg": "ok", "data": {"records": records, "total": total}}
 
 
 # ==========================================
@@ -56,8 +70,8 @@ def need_detail(need_id: int, db: Session = Depends(get_db)):
     if not n:
         return {"code": 404, "msg": "需求未找到", "data": None}
 
-    # 手动处理数据返回
-    img_list = n.img_urls.split(',') if n.img_urls else []
+    # img_urls is stored as JSON (list) in the model
+    img_list = n.img_urls if n.img_urls else []
     data = {
         "id": n.id,
         "title": n.title,
@@ -66,7 +80,7 @@ def need_detail(need_id: int, db: Session = Depends(get_db)):
         "serviceType": n.service_type,
         "imgUrls": img_list,
         "videoUrl": n.video_url,
-        "status": n.status,
+        "status": int(n.status) if n.status is not None else 0,
         "userId": n.owner_id,
         "createTime": n.create_time
     }

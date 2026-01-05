@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, JSON
 from sqlalchemy.orm import relationship
 from .database import Base
 import datetime
@@ -31,8 +31,8 @@ class Need(Base):
     region = Column(String(100), nullable=True)  # 地域
     service_type = Column(String(100), nullable=False)  # 服务类型 (前端 serviceType)
 
-    # --- 文件字段 (前端传数组，后端存 JSON 字符串) ---
-    img_urls = Column(Text, nullable=True)  # 图片链接列表 (前端 imgUrls)
+    # --- 文件字段 (前端传数组，后端存 JSON) ---
+    img_urls = Column(JSON, nullable=True)  # 图片链接列表 (前端 imgUrls)
     video_url = Column(String(500), nullable=True)  # 视频链接 (前端 videoUrl)
 
     status = Column(Integer, default=0)  # 0:已发布, -1:已取消
@@ -53,7 +53,7 @@ class Service(Base):
     title = Column(String(200), nullable=True)  # 服务自荐主题
     content = Column(Text, nullable=True)  # 自荐描述 (前端传 content)
     service_type = Column(String(100), nullable=True)  # 服务类型
-    files = Column(Text, nullable=True)  # 文件列表 JSON (前端 files)
+    files = Column(JSON, nullable=True)  # 文件列表 JSON (前端 files)
 
     status = Column(Integer, default=0)  # 0:待接受, 1:已接受, 2:已拒绝
 

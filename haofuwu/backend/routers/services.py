@@ -47,7 +47,7 @@ def service_list(
 
 
 # -------------------------------------------
-# 获取服务详情 (Detail)
+# 获取服务详情 (Detail) — 返回前端期望字段
 # -------------------------------------------
 @router.get("/detail/{service_id}")
 def service_detail(service_id: int, db: Session = Depends(get_db)):
@@ -55,15 +55,25 @@ def service_detail(service_id: int, db: Session = Depends(get_db)):
     if not s:
         return {"code": 404, "msg": "服务不存在", "data": None}
 
-    # 手动转成 Schema 格式返回
-    data = schemas.ServiceOut(
-        id=s.id,
-        need_id=s.need_id,
-        title=s.title,
-        service_type=s.service_type,
-        content=s.content,
-        status=s.status,
-        user_id=s.owner_id,
-        create_time=s.create_time
-    )
+    # 获取关联需求标题（如果存在）
+    need_title = None
+    if s.need_id:
+        need = crud.get_need(db, s.need_id)
+        need_title = need.title if need else None
+
+    # files stored as JSON
+    files = s.files if s.files else []
+
+    data = {
+        "id": s.id,
+        "needId": s.need_id,
+        "needTitle": need_title,
+        "serviceType": s.service_type,
+        "title": s.title,
+        "content": s.content,
+        "files": files,
+        "status": int(s.status) if s.status is not None else 0,
+        "userId": s.owner_id,
+        "createTime": s.create_time
+    }
     return {"code": 200, "msg": "ok", "data": data}

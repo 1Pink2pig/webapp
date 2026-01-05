@@ -12,7 +12,7 @@ from .utils import verify_password
 def create_user(db: Session, user_in: schemas.UserCreate):
     hashed = utils.get_password_hash(user_in.password)
     now = datetime.datetime.utcnow()
-    full_name = user_in.realName if user_in.realName else user_in.full_name
+    full_name = user_in.realName if getattr(user_in, 'realName', None) else user_in.full_name
     db_user = models.User(
         username=user_in.username,
         email=user_in.email,
@@ -52,21 +52,18 @@ def authenticate_user(db: Session, username: str, password: str):
 
 def create_need(db: Session, user_id: int, need_in: schemas.NeedCreate):
     import datetime
-    # 统一：把图片数组转成逗号分隔的字符串存入数据库
-    # 例如：['img1.jpg', 'img2.jpg'] -> "img1.jpg,img2.jpg"
-    img_str = ",".join(need_in.imgUrls) if need_in.imgUrls else ""
+    # 前端会传 imgUrls 作为数组，直接存入 JSON 列
+    img_list = need_in.imgUrls if need_in.imgUrls else []
 
     db_need = models.Need(
-        # 注意：这里假设你的 models.Need 里字段叫 owner_id
-        # 如果报错提示 unknown argument 'owner_id'，请改成 user_id
         owner_id=user_id,
         title=need_in.title,
         service_type=need_in.serviceType,
         region=need_in.region,
         description=need_in.description,
-        img_urls=img_str,
+        img_urls=img_list,
         video_url=need_in.videoUrl,
-        status="0",  # 0=发布中
+        status=0,  # 0=发布中
         create_time=datetime.datetime.now(),
         update_time=datetime.datetime.now()
     )
@@ -97,24 +94,24 @@ def get_needs_my_list(db: Session, user_id: int, keyword: str = None, service_ty
     # 转换为 Schema 格式返回
     results = []
     for n in needs:
-        # 处理图片字段：字符串 -> 数组
-        img_list = n.img_urls.split(',') if n.img_urls else []
+        # img_urls 字段现在已经是列表或 None
+        img_list = n.img_urls if n.img_urls else []
 
-        # 简单判断是否有响应 (防止 responses 属性不存在报错)
+        # 简单判断是否有响应
         has_resp = False
         if hasattr(n, 'responses') and n.responses:
             has_resp = len(n.responses) > 0
 
         # 构造 NeedOut 对象
         results.append(schemas.NeedOut(
-            id=n.id,  # 修正：数据库是 id
+            id=n.id,
             title=n.title,
             description=n.description,
             region=n.region,
             serviceType=n.service_type,
-            imgUrls=img_list,  # 修正：这里传入数组
+            imgUrls=img_list,
             videoUrl=n.video_url,
-            status=n.status,
+            status=int(n.status) if n.status is not None else 0,
             hasResponse=has_resp,
             userId=n.owner_id,
             createTime=n.create_time
@@ -130,8 +127,8 @@ def update_need(db: Session, need_id: int, need_in: schemas.NeedCreate):
         db_need.service_type = need_in.serviceType
         db_need.region = need_in.region
         db_need.description = need_in.description
-        # 统一格式更新
-        db_need.img_urls = ",".join(need_in.imgUrls) if need_in.imgUrls else ""
+        # 直接保存列表
+        db_need.img_urls = need_in.imgUrls if need_in.imgUrls else []
         db_need.video_url = need_in.videoUrl
         db_need.update_time = datetime.datetime.now()
         db.commit()
@@ -142,7 +139,7 @@ def update_need(db: Session, need_id: int, need_in: schemas.NeedCreate):
 def cancel_need(db: Session, need_id: int):
     db_need = get_need(db, need_id)
     if db_need:
-        db_need.status = "2"  # 2=已取消
+        db_need.status = 2  # 2=已取消
         db.commit()
     return db_need
 
@@ -160,15 +157,14 @@ def delete_need(db: Session, need_id: int):
 # ==========================================
 
 def create_service(db: Session, owner_id: int, svc_in: schemas.ServiceCreate):
-    import json
-    # Service 的 files 比较复杂，可能包含对象，暂时保持 JSON 存储
-    files_json = json.dumps(svc_in.files) if svc_in.files else "[]"
+    # files 使用 JSON 存储（前端会传数组对象）
+    files_val = svc_in.files if svc_in.files else []
 
     db_svc = models.Service(
         title=svc_in.title,
         content=svc_in.content,
         service_type=svc_in.serviceType,
-        files=files_json,
+        files=files_val,
         need_id=svc_in.needId,
         owner_id=owner_id,
         status=0
@@ -196,7 +192,7 @@ def get_service_list(db: Session, keyword: str = None, service_type: str = None)
             title=s.title,
             service_type=s.service_type,
             content=s.content,
-            status=s.status,
+            status=int(s.status) if s.status is not None else 0,
             user_id=s.owner_id,
             create_time=s.create_time
         ))
@@ -221,8 +217,9 @@ def get_my_service_list(db: Session, user_id: int):
             title=s.title,
             service_type=s.service_type,
             content=s.content,
-            status=s.status,
+            status=int(s.status) if s.status is not None else 0,
             user_id=s.owner_id,
             create_time=s.create_time
         ))
     return results
+

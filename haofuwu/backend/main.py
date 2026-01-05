@@ -44,21 +44,15 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/auth")
 app.include_router(users.router, prefix="/api/user")
 
-# ✅ 注册 users 的其他前缀 (根据你的代码逻辑)
 app.include_router(users.router, prefix="/api")
 
-# ✅ 注册 needs 路由 (发布需求用)
 app.include_router(needs.router, prefix="/api/need")
 
-# ✅ 注册 services 路由 (服务列表用)
 app.include_router(services.router, prefix="/api/service")
 
-# ✅【关键修改】把 service-self 也指向 services.router
-# 这样前端请求 /api/service-self/my-list 时，就会去 services.py 里找对应的函数
 app.include_router(services.router, prefix="/api/service-self")
 app.include_router(upload.router, prefix="/api/upload")
 
-# 兼容前端使用的短前缀（例如 /api/service-self）
 try:
     from .routers import service_self
     app.include_router(service_self.router, prefix="/api/service-self")

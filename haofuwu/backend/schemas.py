@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, validator
 from typing import Optional, List, Any
 import datetime
 
@@ -16,70 +16,70 @@ class UserCreate(BaseModel):
     realName: Optional[str] = None
 
 class UserOut(BaseModel):
-    id: int          # ✅ 修正：改成 id，匹配数据库
+    id: int
     username: str
     email: Optional[EmailStr] = None
     full_name: Optional[str] = None
     phone: Optional[str] = None
     intro: Optional[str] = None
     user_type: Optional[str] = None
-    create_time: Optional[datetime.datetime] = None
+    register_time: Optional[datetime.datetime] = None
 
     class Config:
-        from_attributes = True  # ✅ 修正：新版写法
+        orm_mode = True
 
 # --- Need (需求) 交互模型 ---
 class NeedCreate(BaseModel):
     serviceType: str
     title: str
-    description: str
-    imgUrls: Optional[List[str]] = []
+    description: Optional[str]
+    imgUrls: Optional[List[str]] = None
     videoUrl: Optional[str] = None
     region: Optional[str] = None
 
 class NeedOut(BaseModel):
-    id: int          # ✅ 修正：数据库叫 id，这里必须叫 id
+    id: int
     title: str
     description: Optional[str]
     region: Optional[str]
     serviceType: str
-    imgUrls: Optional[List[str]] = []
-    videoUrl: Optional[str]
-    status: str      # ✅ 修正：数据库通常是字符串类型
-    userId: int = 0  # 这里的 userId 是为了给前端用的，下面用 validator 映射
-    user_id: int     # 数据库里的真实字段
-    create_time: Optional[datetime.datetime]
+    imgUrls: Optional[List[str]] = None
+    videoUrl: Optional[str] = None
+    status: int
+    hasResponse: Optional[bool] = False
+    userId: int = 0
+    createTime: Optional[datetime.datetime] = None
 
-    # ✅ 关键修正：把数据库里的逗号分隔字符串，转回成数组给前端
-    @field_validator('imgUrls', mode='before')
-    def parse_img_urls(cls, v):
-        if isinstance(v, str) and v:
-            return v.split(',')
+    @validator('imgUrls', pre=True, always=True)
+    def ensure_img_list(cls, v):
         if v is None:
             return []
+        if isinstance(v, str):
+            return v.split(',') if v else []
         return v
 
-    # ✅ 关键修正：把 id 映射给 userId (兼容前端习惯)
-    @field_validator('userId', mode='before')
-    def map_user_id(cls, v, info):
-        # 尝试从对象中获取 user_id
-        return info.data.get('user_id', 0)
+    @validator('userId', pre=True, always=True)
+    def map_user_id(cls, v, values):
+        if v:
+            return v
+        # try typical ORM attribute name
+        return values.get('user_id') or 0
 
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 # --- Service (服务/响应) 交互模型 ---
 class ServiceCreate(BaseModel):
-    needId: int
+    needId: Optional[int] = None
     needTitle: Optional[str] = None
     serviceType: Optional[str] = None
-    title: str
-    content: str
-    files: Optional[List[Any]] = []
+    title: Optional[str] = None
+    content: Optional[str] = None
+    files: Optional[List[Any]] = None
 
 class ServiceOut(BaseModel):
-    id: int          # ✅ 修正：改成 id
-    need_id: int     # 数据库字段
+    id: int
+    need_id: Optional[int] = None
     title: Optional[str]
     service_type: Optional[str]
     content: Optional[str]
@@ -88,4 +88,4 @@ class ServiceOut(BaseModel):
     create_time: Optional[datetime.datetime]
 
     class Config:
-        from_attributes = True
+        orm_mode = True
