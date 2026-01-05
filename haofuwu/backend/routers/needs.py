@@ -1,0 +1,104 @@
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+from typing import List
+from .. import schemas, crud, models
+from ..database import get_db
+from ..utils import get_current_user
+
+router = APIRouter()
+
+
+# ==========================================
+# 1. 发布需求 (兼容新旧两种写法)
+# ==========================================
+
+# 新写法: POST /api/need/
+@router.post("/", response_model=schemas.NeedOut)
+def create_need(need_in: schemas.NeedCreate, db: Session = Depends(get_db),
+                current_user: models.User = Depends(get_current_user)):
+    return crud.create_need(db, current_user.id, need_in)
+
+
+# 旧写法兼容: POST /api/need/add
+@router.post("/add", response_model=schemas.NeedOut)
+def create_need_backup(need_in: schemas.NeedCreate, db: Session = Depends(get_db),
+                       current_user: models.User = Depends(get_current_user)):
+    return crud.create_need(db, current_user.id, need_in)
+
+
+# ==========================================
+# 2. 获取需求列表
+# ==========================================
+@router.get("/", response_model=List[schemas.NeedOut])
+def list_needs(
+        page: int = Query(1, ge=1),
+        size: int = Query(10, ge=1, le=100),
+        db: Session = Depends(get_db)
+):
+    skip = (page - 1) * size
+    return crud.get_needs(db, skip=skip, limit=size)
+
+
+# ==========================================
+# 3. 获取“我的”需求列表
+# ==========================================
+@router.get("/my-list")
+def my_needs(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    return {"code": 200, "msg": "ok", "data": crud.get_needs_my_list(db, current_user.id)}
+
+
+# ==========================================
+# 4. 获取需求详情
+# ==========================================
+@router.get("/detail/{need_id}")
+def need_detail(need_id: int, db: Session = Depends(get_db)):
+    n = crud.get_need(db, need_id)
+    if not n:
+        return {"code": 404, "msg": "需求未找到", "data": None}
+
+    # 手动处理数据返回
+    img_list = n.img_urls.split(',') if n.img_urls else []
+    data = {
+        "id": n.id,
+        "title": n.title,
+        "description": n.description,
+        "region": n.region,
+        "serviceType": n.service_type,
+        "imgUrls": img_list,
+        "videoUrl": n.video_url,
+        "status": n.status,
+        "userId": n.owner_id,
+        "createTime": n.create_time
+    }
+    return {"code": 200, "msg": "ok", "data": data}
+
+
+# ==========================================
+# 5. 修改需求 (PUT /api/need/{id})
+# ==========================================
+@router.put("/{need_id}")
+def update_need(need_id: int, need_in: schemas.NeedCreate, db: Session = Depends(get_db),
+                current_user: models.User = Depends(get_current_user)):
+    n = crud.get_need(db, need_id)
+    if not n:
+        return {"code": 404, "msg": "需求未找到", "data": None}
+    if n.owner_id != current_user.id:
+        return {"code": 403, "msg": "无权限", "data": None}
+
+    crud.update_need(db, need_id, need_in)
+    return {"code": 200, "msg": "修改成功", "data": None}
+
+
+# ==========================================
+# 6. 删除需求
+# ==========================================
+@router.delete("/{need_id}")
+def delete_need(need_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    n = crud.get_need(db, need_id)
+    if not n:
+        return {"code": 404, "msg": "需求未找到", "data": None}
+    if n.owner_id != current_user.id:
+        return {"code": 403, "msg": "无权限", "data": None}
+
+    crud.delete_need(db, need_id)
+    return {"code": 200, "msg": "删除成功", "data": None}

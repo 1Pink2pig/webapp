@@ -1,0 +1,9 @@
+// to run backend #install requiments.txt first
+
+python -m venv .venv; 
+.venv\Scripts\Activate; 
+pip install -r backend\requirements.txt;
+pip install "uvicorn[standard]"; uvicorn backend.
+uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
+
+// to run frontend #better open in cmd

@@ -1,0 +1,7 @@
+﻿.idea
+haofuwu/.idea
+haofuwu/.venv
+haofuwu/video
+haofuwu/backend/__pycache__
+haofuwu/backend/routers/__pycache__
+haofuwu/haofuwu/node_modules
