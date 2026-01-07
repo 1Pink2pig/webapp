@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import axios from 'axios'
 
 // 模拟本地存储的用户数据
 const mockUsers = [
@@ -227,17 +228,28 @@ export const useUserStore = defineStore('user', {
     userInfo: {},
     token: localStorage.getItem('token') || '',
     isLogin: !!localStorage.getItem('token'),
+    // mark whether initLoginState has already run in this session
+    initialized: false,
     needList: initNeedList(),
     serviceSelfList: initServiceSelfList()
   }),
   actions: {
     setLoginSuccess(token, userInfo) {
+      // Normalize user id field: accept `id` or `userId`
+      if (userInfo && !userInfo.userId && userInfo.id) {
+        userInfo.userId = userInfo.id
+      }
+
       this.token = token
       this.userInfo = userInfo
       this.isLogin = true
+      // mark initialized so subsequent init calls are no-ops
+      this.initialized = true
       // 持久化存储
       localStorage.setItem('token', token)
       localStorage.setItem('user', JSON.stringify(userInfo))
+      // 立即设置 axios 默认请求头，方便后续 API 调用
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
     },
 
     // Mock模式登录
@@ -246,6 +258,8 @@ export const useUserStore = defineStore('user', {
       if (user) {
         this.userInfo = { ...user }
         this.isLogin = true
+        // mark initialized for this session so initLoginState doesn't overwrite mock login
+        this.initialized = true
         localStorage.setItem('user', JSON.stringify(user))
         return true
       }
@@ -294,24 +308,63 @@ export const useUserStore = defineStore('user', {
       this.userInfo = {}
       this.token = '' // 清空内存 token
       this.isLogin = false
+      // reset initialized so a future session can re-init
+      this.initialized = false
       localStorage.removeItem('user')
       localStorage.removeItem('token') // 清除缓存 token
+      // 移除 axios 默认头
+      try {
+        delete axios.defaults.headers.common['Authorization']
+      } catch (e) {
+        // ignore
+      }
     },
 
     initLoginState() {
+      // 防止在短时间内被多次调用（例如路由守卫每次导航）导致重复副作用
+      if (this.initialized) return
+
       const storedUser = localStorage.getItem('user')
       const storedToken = localStorage.getItem('token')
 
       if (storedToken) {
         this.token = storedToken
+        // Ensure axios uses the persisted token after page reload
+        try {
+          axios.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`
+        } catch (e) {
+          // ignore if axios not available for some reason
+        }
       }
 
       if (storedUser) {
-        this.userInfo = JSON.parse(storedUser)
-        if (this.token) {
-           this.isLogin = true
+        let parsed = null
+        try {
+          parsed = JSON.parse(storedUser)
+        } catch (e) {
+          parsed = null
+        }
+
+        // 如果 parsed 存在，则尝试标准化 id 字段
+        if (parsed) {
+          if (!parsed.userId && parsed.id) parsed.userId = parsed.id
+        }
+
+        // 仅当 parsed 存在且包含 userId 时才认定为有效登录（避免无 userId 的旧数据导致循环跳转）
+        if (parsed && parsed.userId) {
+          this.userInfo = parsed
+          // Only mark as logged in if we actually have a token persisted
+          this.isLogin = !!this.token
+        } else {
+          // 数据不完整或损坏，清理并视为未登录
+          this.userInfo = {}
+          this.isLogin = false
+          localStorage.removeItem('user')
         }
       }
+
+      // mark as initialized to make this function idempotent
+      this.initialized = true
     },
 
 
@@ -454,3 +507,4 @@ export const useUserStore = defineStore('user', {
     }
   }
 })
+

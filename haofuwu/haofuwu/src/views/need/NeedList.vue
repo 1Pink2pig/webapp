@@ -329,14 +329,39 @@ const goToEditNeed = (needId) => {
   router.push(`/need/form/${needId}`)
 }
 
-
 onMounted(async () => {
+  // 如果 store 中没有 userId，但有 token，尝试用 token 拉取用户信息（避免 token 存在但 user 丢失导致页面报错/跳转）
+  if ((!userStore.userInfo || !userStore.userInfo.userId) && userStore.token) {
+    try {
+      // 尝试调用后端 me 接口
+      const base = 'http://127.0.0.1:8000'
+      const res = await axios.get(`${base}/api/user/me`, {
+        headers: { Authorization: `Bearer ${userStore.token}` }
+      })
+      const fetched = res.data?.data || res.data || null
+      if (fetched) {
+        // 标准化 id
+        if (!fetched.userId && fetched.id) fetched.userId = fetched.id
+        userStore.setLoginSuccess(userStore.token, fetched)
+      }
+    } catch (e) {
+      // 无法获取用户信息：清理并跳回登录
+      console.warn('Use token to fetch /api/user/me failed:', e)
+      userStore.logout()
+      router.push('/login')
+      return
+    }
+  }
 
-  userStore.initLoginState()
-  if (!userStore.isLogin) {
+  // 已在路由守卫中调用 initLoginState 并处理未登录跳转，页面不再重复调用以避免冲突
+  // 这里保留一个轻量防护：如果 userInfo 不存在则提示并返回（不再强制跳转）
+  if (!userStore.userInfo || !userStore.userInfo.userId) {
+    ElMessage.error('用户未登录或信息丢失，请重新登录')
+    // 如没有 user info，则强制跳转到登录页
     router.push('/login')
     return
   }
+
   //设置当前用户ID
   currentUserId.value = userStore.userInfo.userId || ''
   if (!currentUserId.value) {

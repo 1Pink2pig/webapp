@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+import logging
 from sqlalchemy.orm import Session
 from typing import List
 from .. import schemas, crud, models
@@ -7,6 +8,7 @@ from ..utils import get_current_user
 
 # 注意：这里不写 prefix，因为我们在 main.py 里已经定义了 prefix="/api/service" 和 "/api/service-self"
 router = APIRouter()
+logger = logging.getLogger("uvicorn.error")
 
 
 # -------------------------------------------
@@ -25,7 +27,14 @@ def create_service(service_in: schemas.ServiceCreate, db: Session = Depends(get_
 # 获取我的服务列表 (My Service List)
 # -------------------------------------------
 @router.get("/my-list")  # 对应 /api/service-self/my-list
-def my_service_list(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+def my_service_list(request: Request, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    # Debug logging to help trace authentication issues
+    try:
+        auth_header = request.headers.get('authorization')
+        logger.info(f"[SERVICE-MY-LIST] Authorization={auth_header} user={getattr(current_user, 'username', None)} id={getattr(current_user, 'id', None)}")
+    except Exception as _e:
+        logger.warning(f"[SERVICE-MY-LIST] logging failed: {_e}")
+
     # 1. 调用 crud 获取列表
     data = crud.get_my_service_list(db, current_user.id)
     # 2. 返回给前端（注意：不加 response_model，防止 422 错误）

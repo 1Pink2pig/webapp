@@ -153,7 +153,8 @@ const apiGetMyServiceSelfList = async () => {
       {
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': userStore.userInfo.token ? `Bearer ${userStore.userInfo.token}` : ''
+          // use the canonical token stored in userStore.token (persisted to localStorage by setLoginSuccess/initLoginState)
+          'Authorization': userStore.token ? `Bearer ${userStore.token}` : ''
         },
         timeout: 10000
       }
@@ -193,7 +194,8 @@ const apiDeleteServiceSelf = async (serviceId) => {
       {
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': userStore.userInfo.token ? `Bearer ${userStore.userInfo.token}` : ''
+          // ensure we send the stored token
+          'Authorization': userStore.token ? `Bearer ${userStore.token}` : ''
         },
         timeout: 10000
       }

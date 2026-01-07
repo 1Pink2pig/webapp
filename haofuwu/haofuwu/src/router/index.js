@@ -137,7 +137,24 @@ const router = createRouter({
 // 路由守卫
 router.beforeEach((to, from, next) => {
   const userStore = useUserStore()
+  // 初始化登录状态（读取 localStorage），确保 guard 能正确识别已登录用户
+  if (typeof userStore.initLoginState === 'function') {
+    try {
+      userStore.initLoginState()
+    } catch (e) {
+      // ignore
+    }
+  }
+
   const isLogin = userStore.isLogin
+
+  // DEBUG: 打印路由与登录态信息，便于定位循环跳转
+  try {
+    // eslint-disable-next-line no-console
+    console.debug('[ROUTER GUARD] to=', to.fullPath, 'from=', from.fullPath, 'isLogin=', isLogin, 'user=', userStore.userInfo)
+  } catch (e) {
+    // ignore
+  }
 
   // 无需登录的页面
   if (to.meta.noAuth) {
@@ -149,6 +166,15 @@ router.beforeEach((to, from, next) => {
   if (!isLogin) {
     next(`/login?redirect=${encodeURIComponent(to.path)}`) // encodeURIComponent处理特殊路径
     return
+  }
+
+  // 需要管理员权限的页面 -> 非管理员用户重定向到 /home（避免 UI/路由循环）
+  if (to.meta.requireAdmin) {
+    const isAdmin = userStore.userInfo && userStore.userInfo.userType === '系统管理员'
+    if (!isAdmin) {
+      next('/home')
+      return
+    }
   }
 
   // 已登录且无特殊权限要求 → 正常放行
