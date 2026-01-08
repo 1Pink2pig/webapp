@@ -16,7 +16,24 @@ router = APIRouter()
 @router.post("/", response_model=schemas.NeedOut)
 def create_need(need_in: schemas.NeedCreate, db: Session = Depends(get_db),
                 current_user: models.User = Depends(get_current_user)):
-    return crud.create_need(db, current_user.id, need_in)
+    # 调用 crud 创建并返回序列化的 NeedOut，避免直接返回 ORM 对象导致 response validation 失败
+    n = crud.create_need(db, current_user.id, need_in)
+
+    img_list = n.img_urls if getattr(n, 'img_urls', None) else []
+
+    return schemas.NeedOut(
+        id=n.id,
+        title=n.title,
+        description=n.description,
+        region=n.region,
+        serviceType=n.service_type,
+        imgUrls=img_list,
+        videoUrl=n.video_url,
+        status=int(n.status) if n.status is not None else 0,
+        hasResponse=False,
+        userId=n.owner_id,
+        createTime=n.create_time
+    )
 
 
 # 旧写法兼容: POST /api/need/add

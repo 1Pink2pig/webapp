@@ -59,6 +59,14 @@ try:
 except Exception:
     pass
 
+# include admin router (statistics) if available
+try:
+    from .routers import admin
+    app.include_router(admin.router, prefix="/api/admin")
+except Exception:
+    # not critical in older setups
+    pass
+
 
 @app.get("/health")
 def health():

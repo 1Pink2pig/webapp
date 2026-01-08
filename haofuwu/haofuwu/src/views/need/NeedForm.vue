@@ -59,6 +59,7 @@ import FileUpload from '@/components/FileUpload.vue'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
 
+const baseUrl = process.env.VUE_APP_API_BASE_URL || 'http://127.0.0.1:8000'
 
 const isMock = false
 
@@ -103,8 +104,9 @@ const getMockNeedDetail = () => {
 const getNeedDetail = async () => {
   try {
     isLoading.value = true
-    const res = await axios.get(`/api/need/detail/${needId}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
+    const token = userStore.token || localStorage.getItem('token') || ''
+    const res = await axios.get(`${baseUrl}/api/need/detail/${needId}`, {
+      headers: { Authorization: `Bearer ${token}` }
     })
     if (res.data.code === 200) {
       const data = res.data.data
@@ -145,10 +147,12 @@ const submitNeed = async () => {
 
     const apiUrl = isEdit.value ? `/api/need/${needId}` : '/api/need/'
     const method = isEdit.value ? 'put' : 'post'
+    const token = userStore.token || localStorage.getItem('token') || ''
+    const fullUrl = `${baseUrl}${apiUrl}`
 
-    const res = await axios[method](apiUrl, submitData, {
+    const res = await axios[method](fullUrl, submitData, {
       headers: {
-        Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json'
       }
     })

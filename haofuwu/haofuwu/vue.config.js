@@ -12,5 +12,19 @@ module.exports = defineConfig({
       extensions: ['.mjs', '.js', '.jsx', '.json', '.vue'] // 仅保留合法属性
     }
   },
-  transpileDependencies: true
+  transpileDependencies: true,
+  // 开发时把 /api 请求代理到后端，避免在本地未设置 VUE_APP_API_BASE_URL 时出现 404
+  devServer: {
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+        secure: false,
+        ws: false
+      }
+    },
+    client: {
+      overlay: false // 关闭 dev server 的错误遮罩（避免 ResizeObserver 错误打断开发）
+    }
+  }
 })
