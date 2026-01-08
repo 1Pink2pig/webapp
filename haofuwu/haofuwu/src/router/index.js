@@ -46,7 +46,7 @@ const routes = [
 
   // 需求列表
     {
-      path: '/need/list',
+      path: '/login',
       name: 'NeedList',
       component: NeedList
     },

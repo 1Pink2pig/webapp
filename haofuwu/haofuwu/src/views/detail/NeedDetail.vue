@@ -242,7 +242,7 @@ const loadNeedDetail = async () => {
   // 空ID直接返回
   if (!needId) {
     ElMessage.warning('缺少需求ID')
-    return router.push('/need/list')
+    return router.push('/login')
   }
 
   try {
@@ -269,7 +269,7 @@ const loadNeedDetail = async () => {
     // 无数据处理
     if (!needData) {
       ElMessage.warning('需求不存在或已删除')
-      return router.push('/need/list')
+      return router.push('/login')
     }
 
     // 补充发布人用户名
@@ -331,7 +331,7 @@ const goBack = () => {
   if (window.history.length > 1) {
     router.back()
   } else {
-    router.push('/need/list')
+    router.push('/login')
   }
 }
 
@@ -365,7 +365,7 @@ const deleteNeed = () => {
 
     if (isSuccess) {
       ElMessage.success('需求已删除')
-      router.push('/need/list')
+      router.push('/login')
     } else {
       ElMessage.error('删除失败：需求已有响应或权限不足')
     }

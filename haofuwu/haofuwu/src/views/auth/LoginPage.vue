@@ -56,7 +56,7 @@ onMounted(() => {
   if (userStore.isLogin) {
     // 判断是否是系统管理员
     const isAdmin = userStore.userInfo.userType === '系统管理员'
-    router.push(isAdmin ? '/admin' : (route.query.redirect || '/need/list'))
+    router.push(isAdmin ? '/admin' : (route.query.redirect || '/login'))
   }
 })
 

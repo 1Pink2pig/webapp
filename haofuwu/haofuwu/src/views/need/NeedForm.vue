@@ -117,12 +117,12 @@ const getNeedDetail = async () => {
       }
     } else {
       ElMessage.error(res.data.msg || '获取需求详情失败')
-      router.push('/need/list')
+      router.push('/login')
     }
   } catch (error) {
     ElMessage.error('网络错误，无法获取需求详情')
     console.error('getNeedDetail error:', error)
-    router.push('/need/list')
+    router.push('/login')
   } finally {
     isLoading.value = false
   }
