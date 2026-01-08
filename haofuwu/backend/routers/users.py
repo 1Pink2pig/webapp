@@ -8,23 +8,34 @@ from ..utils import get_current_user, get_password_hash
 router = APIRouter()
 
 
-@router.get("/me", response_model=schemas.UserOut)
+def _normalize_user_type(raw_type: str) -> str:
+    """Map various admin-like stored values to the frontend-expected '系统管理员'."""
+    if not raw_type:
+        return "普通用户"
+    t = raw_type.lower()
+    if t in ("系统管理员", "管理员", "admin", "administrator") or "管理" in t:
+        return "系统管理员"
+    return raw_type
+
+
+@router.get("/me")
 def read_my_profile(current_user: models.User = Depends(get_current_user)):
-    # 返回前端期望的 camelCase 用户对象（直接对象，便于前端登录后直接使用）
-    return {
+    """Return the current user's info in a consistent {code,msg,data} shape including normalized userType."""
+    data = {
         "userId": current_user.id,
         "id": current_user.id,
         "username": current_user.username,
         "realName": current_user.full_name or "",
         "phone": current_user.phone or "",
         "intro": current_user.intro or "",
-        "userType": current_user.user_type or "普通用户",
+        "userType": _normalize_user_type(current_user.user_type),
         "registerTime": current_user.register_time.isoformat() if getattr(current_user, 'register_time', None) else None,
         "updateTime": current_user.update_time.isoformat() if getattr(current_user, 'update_time', None) else None
     }
+    return {"code": 200, "msg": "ok", "data": data}
 
 
-@router.put("/me", response_model=schemas.UserOut)
+@router.put("/me")
 def update_my_profile(data: schemas.UserCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     user = db.query(models.User).filter(models.User.id == current_user.id).first()
     if getattr(data, 'realName', None) is not None:
@@ -39,17 +50,18 @@ def update_my_profile(data: schemas.UserCreate, db: Session = Depends(get_db), c
     db.add(user)
     db.commit()
     db.refresh(user)
-    return {
+    data = {
         "userId": user.id,
         "id": user.id,
         "username": user.username,
         "realName": user.full_name or "",
         "phone": user.phone or "",
         "intro": user.intro or "",
-        "userType": user.user_type or "普通用户",
+        "userType": _normalize_user_type(user.user_type),
         "registerTime": user.register_time.isoformat() if getattr(user, 'register_time', None) else None,
         "updateTime": user.update_time.isoformat() if getattr(user, 'update_time', None) else None
     }
+    return {"code": 200, "msg": "ok", "data": data}
 
 
 @router.get('/detail/{user_id}')
@@ -64,7 +76,27 @@ def get_user_detail(user_id: int, db: Session = Depends(get_db)):
         "id": user.id,
         "username": user.username,
         "realName": user.full_name or "",
-        "userType": user.user_type or "普通用户",
+        "userType": _normalize_user_type(user.user_type),
+        "registerTime": user.register_time.isoformat() if getattr(user, 'register_time', None) else None,
+        "updateTime": user.update_time.isoformat() if getattr(user, 'update_time', None) else None,
+        "intro": user.intro or "",
+        "phone": user.phone or ""
+    }
+    return {"code": 200, "msg": "ok", "data": data}
+
+
+@router.get('/by-username')
+def get_user_by_username(username: str, db: Session = Depends(get_db)):
+    """Lookup user by username and return same payload shape as /detail/{user_id}."""
+    user = db.query(models.User).filter(models.User.username == username).first()
+    if not user:
+        return {"code": 404, "msg": "用户未找到", "data": None}
+    data = {
+        "userId": user.id,
+        "id": user.id,
+        "username": user.username,
+        "realName": user.full_name or "",
+        "userType": _normalize_user_type(user.user_type),
         "registerTime": user.register_time.isoformat() if getattr(user, 'register_time', None) else None,
         "updateTime": user.update_time.isoformat() if getattr(user, 'update_time', None) else None,
         "intro": user.intro or "",

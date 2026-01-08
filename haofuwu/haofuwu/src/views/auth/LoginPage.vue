@@ -116,9 +116,33 @@ const apiLogin = async () => {
           userInfo = userInfo || {}
           userInfo.userId = possibleId
         }
+        // also try to get username from token payload if available
+        if (decoded && decoded.sub && !userInfo.username) {
+          // some tokens use sub=username
+          userInfo.username = decoded.sub
+        }
       } catch (e) {
         // ignore decode errors
         console.warn('JWT 解析用户 id 失败：', e)
+      }
+    }
+
+    // If we don't have a userType yet, try to fetch it by username from backend
+    if ((!userInfo || !userInfo.userType) && accessToken) {
+      try {
+        const lookupUsername = (userInfo && userInfo.username) ? userInfo.username : form.value.username
+        if (lookupUsername) {
+          const byUserRes = await axios.get(`${base}/api/user/by-username?username=${encodeURIComponent(lookupUsername)}`, {
+            headers: { Authorization: `Bearer ${accessToken}` }
+          })
+          const byData = byUserRes.data?.data || null
+          if (byData) {
+            // merge fetched fields into userInfo
+            userInfo = Object.assign({}, userInfo || {}, byData)
+          }
+        }
+      } catch (e) {
+        console.warn('通过用户名获取用户信息失败：', e)
       }
     }
 
