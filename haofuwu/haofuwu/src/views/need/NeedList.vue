@@ -112,7 +112,7 @@ import { useUserStore } from '@/store/userStore'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import axios from 'axios'
 
-const isMock = ref(true)
+const isMock = ref(false) // 切换为后端模式：列表从后端获取发布的需求
 
 const isLoading = ref(false)
 const router = useRouter()
