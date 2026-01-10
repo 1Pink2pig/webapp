@@ -58,8 +58,9 @@ const loadResponses = async () => {
   try {
     userStore.initLoginState()
     const baseUrl = process.env.VUE_APP_API_BASE_URL || 'http://127.0.0.1:8000'
+    const token = userStore.token || sessionStorage.getItem('token') || ''
     const res = await axios.get(`${baseUrl}/api/service/by-need/${needId}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
+      headers: { Authorization: `Bearer ${token}` }
     })
     if (res.data && res.data.code === 200) {
       responses.value = res.data.data || []
@@ -69,7 +70,7 @@ const loadResponses = async () => {
 
     // determine if current user is the need owner
     const needDetail = await axios.get(`${baseUrl}/api/need/detail/${needId}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
+      headers: { Authorization: `Bearer ${token}` }
     })
     if (needDetail.data && needDetail.data.code === 200) {
       isOwner.value = String(needDetail.data.data.userId) === String(userStore.userInfo?.userId)
@@ -90,8 +91,9 @@ const viewDetail = (row) => {
 const acceptRow = async (row) => {
   try {
     const baseUrl = process.env.VUE_APP_API_BASE_URL || 'http://127.0.0.1:8000'
+    const token = userStore.token || sessionStorage.getItem('token') || ''
     const res = await axios.put(`${baseUrl}/api/service/confirm/${row.serviceId}`, {}, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
+      headers: { Authorization: `Bearer ${token}` }
     })
     if (res.data && res.data.code === 200) {
       ElMessage.success('已接受该响应')
@@ -108,8 +110,9 @@ const acceptRow = async (row) => {
 const rejectRow = async (row) => {
   try {
     const baseUrl = process.env.VUE_APP_API_BASE_URL || 'http://127.0.0.1:8000'
+    const token = userStore.token || sessionStorage.getItem('token') || ''
     const res = await axios.put(`${baseUrl}/api/service/reject/${row.serviceId}`, {}, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
+      headers: { Authorization: `Bearer ${token}` }
     })
     if (res.data && res.data.code === 200) {
       ElMessage.success('已拒绝该响应')

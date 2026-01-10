@@ -146,9 +146,10 @@ const getServiceList = async () => {
     }
 
     // 请求公开的需求列表（改为调用 /api/need/），这是最小改动且能让“我服务”页面看到其他用户发布的需求
+    const token = userStore.token || sessionStorage.getItem('token') || ''
     const res = await axios.get('/api/need/', {
       params,
-      headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
+      headers: { Authorization: `Bearer ${token}` }
     })
 
     if (res.data.code === 200 || Array.isArray(res.data)) {

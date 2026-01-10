@@ -114,8 +114,8 @@ const initUserInfo = async () => {
     isLoading.value = true
 
     //检查是否有 Token (最基础的登录凭证)
-    // 如果 store 里没有，尝试从 localStorage 拿一次兜底
-    const token = userStore.token || localStorage.getItem('token')
+    // 如果 store 里没有，尝试从 sessionStorage 拿一次兜底（优先使用 userStore.token）
+    const token = userStore.token || sessionStorage.getItem('token')
 
     if (!token && !isMock) {
       ElMessage.warning('请先登录')
@@ -133,7 +133,8 @@ const initUserInfo = async () => {
         if (meRes.data) {
           // 成功救回！更新 Store 和 本地缓存
           userStore.userInfo = meRes.data
-          localStorage.setItem('user', JSON.stringify(meRes.data))
+          // persist current tab's user info
+          sessionStorage.setItem('user', JSON.stringify(meRes.data))
         }
       } catch (err) {
         console.error('自动获取个人信息失败', err)

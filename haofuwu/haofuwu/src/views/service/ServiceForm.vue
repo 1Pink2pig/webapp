@@ -42,11 +42,11 @@
             <h4>文件预览：</h4>
             <div class="file-list">
               <div v-for="(file, index) in form.files" :key="index" class="file-item">
-                <template v-if="file.url.includes('image')">
-                  <img :src="file.url" alt="图片" class="file-img">
+                <template v-if="(file.type && file.type.startsWith('image')) || (!file.type && file.url && file.url.match(/\.(jpg|jpeg|png|gif|bmp|webp)(\?|$)/i))">
+                  <img :src="file.url" alt="图片" class="file-img" @click="openPreview(file.url, 'image')">
                 </template>
-                <template v-else-if="file.url.includes('video')">
-                  <video :src="file.url" controls class="file-video"></video>
+                <template v-else-if="(file.type && file.type.startsWith('video')) || (!file.type && file.url && file.url.match(/\.(mp4|webm|ogg|mov|mkv)(\?|$)/i))">
+                  <video :src="file.url" controls class="file-video" @click="openPreview(file.url, 'video')"></video>
                 </template>
               </div>
               <div v-if="form.files.length === 0" class="no-file">暂无上传文件</div>
@@ -137,8 +137,9 @@ const rules = ref({
 const getServiceDetail = async () => {
   try {
     isLoading.value = true
+    const token = userStore.token || sessionStorage.getItem('token') || ''
     const res = await axios.get(`/api/service/detail/${serviceId}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
+      headers: { Authorization: `Bearer ${token}` }
     })
     if (res.data.code === 200) {
       const data = res.data.data
@@ -184,8 +185,9 @@ const submitService = async () => {
     // If creating new service, pre-check the linked need status to avoid posting to closed/answered needs
     if (!isEdit.value && submitData.needId) {
       try {
+        const token = userStore.token || sessionStorage.getItem('token') || ''
         const needRes = await axios.get(`/api/need/detail/${submitData.needId}`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
+          headers: { Authorization: `Bearer ${token}` }
         })
         if (!needRes || !needRes.data) {
           ElMessage.error('无法验证关联需求状态，提交已取消')
@@ -212,9 +214,10 @@ const submitService = async () => {
       }
     }
 
+    const token = userStore.token || sessionStorage.getItem('token') || ''
     const res = await axios[method](apiUrl, submitData, {
       headers: {
-        Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json'
       }
     })
@@ -265,7 +268,7 @@ onMounted(async () => {
     if (needId && needId !== 'none') {
       try {
         const res = await axios.get(`/api/need/detail/${needId}`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
+          headers: { Authorization: `Bearer ${userStore.token || sessionStorage.getItem('token') || ''}` }
         })
         form.value.needTitle = res.data.code === 200 ? res.data.data.title : '未知需求'
       } catch (error) {

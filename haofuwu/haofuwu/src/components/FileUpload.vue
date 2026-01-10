@@ -64,8 +64,14 @@ watch(() => props.fileList, (newVal) => {
 }, { deep: true })
 
 watch(innerFileList, (newVal) => {
-  emit('update:fileList', [...newVal])
-  emit('upload-success', [...newVal])
+  // ensure emitted fileList items include type inferred where possible
+  const normalized = newVal.map(item => {
+    if (item.type) return item
+    if (item.url) return { ...item, type: inferTypeFromUrl(item.url) }
+    return item
+  })
+  emit('update:fileList', [...normalized])
+  emit('upload-success', [...normalized])
 }, { deep: true })
 
 const uploadRef = ref(null)
@@ -75,6 +81,14 @@ const uploadUrl = ref('/api/upload') // 模拟上传接口
 const previewVisible = ref(false)
 const previewFile = ref({})
 const previewType = ref('')
+
+const inferTypeFromUrl = (url) => {
+  if (!url) return ''
+  const u = String(url).toLowerCase()
+  if (u.match(/\.(jpg|jpeg|png|gif|bmp|webp)(\?|$)/)) return 'image'
+  if (u.match(/\.(mp4|webm|ogg|mov|mkv)(\?|$)/)) return 'video'
+  return ''
+}
 
 /**
  * 移除文件
@@ -145,10 +159,17 @@ const handleUploadSuccess = (response, file, fileList) => {
   const res = response || { code: 200, data: { url: URL.createObjectURL(file.raw) } }
 
   if (res.code === 200) {
-    // 更新文件列表中的文件URL
+    // 更新文件列表中的文件URL，并确保每项包含 type 字段
     innerFileList.value = fileList.map(item => {
       if (item.uid === file.uid) {
-        return { ...item, url: res.data.url }
+        const url = res.data.url
+        // prefer raw.type when available
+        const t = (item.raw && item.raw.type) ? (item.raw.type.startsWith('image') ? 'image' : (item.raw.type.startsWith('video') ? 'video' : '')) : inferTypeFromUrl(url)
+        return { ...item, url: url, type: t }
+      }
+      // ensure existing items have a type inferred from url if missing
+      if (!item.type && item.url) {
+        return { ...item, type: inferTypeFromUrl(item.url) }
       }
       return item
     })

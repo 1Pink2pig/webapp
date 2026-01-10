@@ -86,10 +86,10 @@
             >
               <div class="file-name">{{ file.name || `文件${index+1}` }}</div>
               <template v-if="file.url.includes('image')">
-                <img :src="file.url" alt="证明图片" class="preview-img">
+                <img :src="file.url" alt="证明图片" class="preview-img" @click="openPreview(file.url, 'image')" style="cursor: pointer;">
               </template>
               <template v-else-if="file.url.includes('video')">
-                <video :src="file.url" controls class="preview-video"></video>
+                <video :src="file.url" controls class="preview-video" @click="openPreview(file.url, 'video')" style="cursor: pointer;"></video>
               </template>
               <template v-else>
                 <div class="other-file">不支持预览的文件</div>
@@ -104,6 +104,16 @@
         暂无该服务的详情信息
       </div>
     </el-card>
+
+    <!-- 预览对话框 -->
+    <el-dialog v-model="previewVisible" title="附件预览" width="80%" append-to-body>
+      <template v-if="previewType === 'image'">
+        <el-image :src="previewFile.url" fit="contain" style="width:100%; height:70vh; background:#000"></el-image>
+      </template>
+      <template v-else-if="previewType === 'video'">
+        <video :src="previewFile.url" controls style="width:100%; max-height:70vh"></video>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -261,7 +271,7 @@ const getApiServiceDetail = async () => {
     isLoading.value = true
     //获取服务详情（使用解析后的数字 id）
     const serviceRes = await axios.get(`/api/service/detail/${resolvedServiceId}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
+      headers: { Authorization: `Bearer ${userStore.token || sessionStorage.getItem('token') || ''}` }
     })
     if (serviceRes.data.code !== 200) {
       serviceDetail.value = null
@@ -303,7 +313,7 @@ const getApiServiceDetail = async () => {
 
     if (serviceDetail.value.needId) {
       const needRes = await axios.get(`/api/need/detail/${serviceDetail.value.needId}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
+        headers: { Authorization: `Bearer ${userStore.token || sessionStorage.getItem('token') || ''}` }
       })
       if (needRes.data.code === 200) {
         matchedNeed.value = needRes.data.data
@@ -392,7 +402,7 @@ const fetchUserById = async (userId) => {
   try {
     const baseUrl = process.env.VUE_APP_API_BASE_URL || 'http://127.0.0.1:8000'
     const res = await axios.get(`${baseUrl}/api/user/detail/${idNum}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
+      headers: { Authorization: `Bearer ${userStore.token || sessionStorage.getItem('token') || ''}` }
     })
     if (res && res.data && res.data.code === 200 && res.data.data) {
       return res.data.data
@@ -403,6 +413,17 @@ const fetchUserById = async (userId) => {
 
   // Do NOT fallback to local mock store; return null to indicate backend unavailable
   return null
+}
+
+// 预览相关
+const previewVisible = ref(false)
+const previewFile = ref({ url: '' })
+const previewType = ref('')
+
+const openPreview = (url, type = 'image') => {
+  previewFile.value = { url }
+  previewType.value = type
+  previewVisible.value = true
 }
 </script>
 

@@ -55,7 +55,7 @@
             :key="`img-${index}`"
             class="file-item"
           >
-            <img :src="url" alt="需求图片" class="file-img">
+            <img :src="url" alt="需求图片" class="file-img" @click="openPreview(url, 'image')" style="cursor: pointer;">
             <div class="file-name">图片{{ index+1 }}</div>
           </div>
           <div
@@ -63,7 +63,7 @@
             :key="`video-${needInfo.needId}`"
             class="file-item"
           >
-            <video :src="needInfo.videoUrl" controls class="file-video"></video>
+            <video :src="needInfo.videoUrl" controls class="file-video" @click="openPreview(needInfo.videoUrl, 'video')" style="cursor: pointer;"></video>
             <div class="file-name">需求视频</div>
           </div>
         </div>
@@ -115,6 +115,20 @@
           取消需求
         </el-button>
       </div>
+
+      <!-- 预览对话框 -->
+      <el-dialog v-model="previewVisible" title="附件预览" width="80%" append-to-body>
+        <template v-if="previewType === 'image'">
+          <el-image
+            :src="previewFile.url"
+            fit="contain"
+            style="width:100%; height:70vh; background:#000"
+          ></el-image>
+        </template>
+        <template v-else-if="previewType === 'video'">
+          <video :src="previewFile.url" controls style="width:100%; max-height:70vh"></video>
+        </template>
+      </el-dialog>
     </el-card>
   </div>
 </template>
@@ -166,6 +180,11 @@ const needInfo = ref({
 })
 const isOwner = ref(false)
 const isLoading = ref(false)
+
+// 预览相关状态
+const previewVisible = ref(false)
+const previewFile = ref({ url: '' })
+const previewType = ref('')
 
 // 后端
 const apiGetNeedDetail = async (needId) => {
@@ -413,6 +432,14 @@ const cancelNeed = () => {
     ElMessage.info('已取消取消操作')
   })
 }
+
+// 打开预览
+const openPreview = (url, type = 'image') => {
+  previewFile.value = { url }
+  previewType.value = type
+  previewVisible.value = true
+}
+
 
 onMounted(() => {
   loadNeedDetail()

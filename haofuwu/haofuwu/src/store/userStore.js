@@ -250,8 +250,9 @@ const initServiceSelfList = () => {
 export const useUserStore = defineStore('user', {
   state: () => ({
     userInfo: {},
-    token: localStorage.getItem('token') || '',
-    isLogin: !!localStorage.getItem('token'),
+    // Persist token and user per browser tab (sessionStorage) to avoid cross-tab login bleed
+    token: sessionStorage.getItem('token') || '',
+    isLogin: !!sessionStorage.getItem('token'),
     // mark whether initLoginState has already run in this session
     initialized: false,
     needList: initNeedList(),
@@ -269,9 +270,9 @@ export const useUserStore = defineStore('user', {
       this.isLogin = true
       // mark initialized so subsequent init calls are no-ops
       this.initialized = true
-      // 持久化存储
-      localStorage.setItem('token', token)
-      localStorage.setItem('user', JSON.stringify(userInfo))
+      // 持久化存储 - use sessionStorage so each tab keeps its own login
+      sessionStorage.setItem('token', token)
+      sessionStorage.setItem('user', JSON.stringify(userInfo))
       // 立即设置 axios 默认请求头，方便后续 API 调用
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
     },
@@ -284,7 +285,8 @@ export const useUserStore = defineStore('user', {
         this.isLogin = true
         // mark initialized for this session so initLoginState doesn't overwrite mock login
         this.initialized = true
-        localStorage.setItem('user', JSON.stringify(user))
+        // persist only in this tab
+        sessionStorage.setItem('user', JSON.stringify(user))
         return true
       }
       return false
@@ -324,18 +326,19 @@ export const useUserStore = defineStore('user', {
           updateTime: this.userInfo.updateTime
         }
         localStorage.setItem('mockUsers', JSON.stringify(mockUsers))
-        localStorage.setItem('user', JSON.stringify(this.userInfo))
+        // update current tab's persisted user state
+        sessionStorage.setItem('user', JSON.stringify(this.userInfo))
       }
     },
-
     logout() {
       this.userInfo = {}
       this.token = '' // 清空内存 token
       this.isLogin = false
       // reset initialized so a future session can re-init
       this.initialized = false
-      localStorage.removeItem('user')
-      localStorage.removeItem('token') // 清除缓存 token
+      // clear only this tab's persisted login state
+      sessionStorage.removeItem('user')
+      sessionStorage.removeItem('token') // 清除缓存 token
       // 移除 axios 默认头
       try {
         delete axios.defaults.headers.common['Authorization']
@@ -348,8 +351,9 @@ export const useUserStore = defineStore('user', {
       // 防止在短时间内被多次调用（例如路由守卫每次导航）导致重复副作用
       if (this.initialized) return
 
-      const storedUser = localStorage.getItem('user')
-      const storedToken = localStorage.getItem('token')
+      // read from sessionStorage so each tab initializes its own login state
+      const storedUser = sessionStorage.getItem('user')
+      const storedToken = sessionStorage.getItem('token')
 
       if (storedToken) {
         this.token = storedToken
@@ -383,7 +387,7 @@ export const useUserStore = defineStore('user', {
           // 数据不完整或损坏，清理并视为未登录
           this.userInfo = {}
           this.isLogin = false
-          localStorage.removeItem('user')
+          sessionStorage.removeItem('user')
         }
       }
 
@@ -529,6 +533,11 @@ export const useUserStore = defineStore('user', {
       // 防止未登录时报错
       if (!state.userInfo || !state.userInfo.userId) return []
       return state.serviceSelfList.filter(item => item.userId === state.userInfo.userId)
+    },
+    // 只返回当前登录用户发布的需求列表（用于用户页面的“我的需求”）
+    myNeedList: (state) => {
+      if (!state.userInfo || !state.userInfo.userId) return []
+      return state.needList.filter(item => String(item.userId) === String(state.userInfo.userId))
     }
   }
 })

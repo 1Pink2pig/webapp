@@ -29,11 +29,11 @@
             <h4>文件预览：</h4>
             <div class="file-list">
               <div v-for="(file, index) in form.files" :key="index" class="file-item">
-                <template v-if="file.url.includes('image')">
-                  <img :src="file.url" alt="图片" class="file-img">
+                <template v-if="(file.type && file.type.startsWith('image')) || (!file.type && file.url && file.url.match(/\.(jpg|jpeg|png|gif|bmp|webp)(\?|$)/i))">
+                  <img :src="file.url" alt="图片" class="file-img" @click="openPreview(file.url, 'image')">
                 </template>
-                <template v-else-if="file.url.includes('video')">
-                  <video :src="file.url" controls class="file-video"></video>
+                <template v-else-if="(file.type && file.type.startsWith('video')) || (!file.type && file.url && file.url.match(/\.(mp4|webm|ogg|mov|mkv)(\?|$)/i))">
+                  <video :src="file.url" controls class="file-video" @click="openPreview(file.url, 'video')"></video>
                 </template>
               </div>
               <div v-if="form.files.length === 0" class="no-file">暂无上传文件</div>
@@ -119,7 +119,7 @@ const getNeedDetail = async () => {
     }
 
     isLoading.value = true
-    const token = userStore.token || localStorage.getItem('token') || ''
+    const token = userStore.token || sessionStorage.getItem('token') || ''
     const res = await axios.get(`${baseUrl}/api/need/detail/${needId}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
@@ -160,15 +160,15 @@ const submitNeed = async () => {
       serviceType: form.value.serviceType,
       title: form.value.title,
       description: form.value.description,
-      imgUrls: form.value.files.map(file => file.url),
-      videoUrl: form.value.files.find(file => file.url.includes('video'))?.url || '',
+      imgUrls: form.value.files.filter(f=> (f.type && f.type.startsWith('image')) || (f.url && f.url.match(/\.(jpg|jpeg|png|gif|bmp|webp)(\?|$)/i))).map(file => file.url),
+      videoUrl: (form.value.files.find(f=> (f.type && f.type.startsWith('video')) || (f.url && f.url.match(/\.(mp4|webm|ogg|mov|mkv)(\?|$)/i)))||{}).url || '',
       region: form.value.region
     }
 
     // Use normalized needId for edit
     const apiUrl = isEdit.value ? `/api/need/${needId}` : '/api/need/'
     const method = isEdit.value ? 'put' : 'post'
-    const token = userStore.token || localStorage.getItem('token') || ''
+    const token = userStore.token || sessionStorage.getItem('token') || ''
     const fullUrl = `${baseUrl}${apiUrl}`
 
     const res = await axios[method](fullUrl, submitData, {

@@ -186,20 +186,25 @@ const fetchMyNeeds = async () => {
 
       filterData()
     } else {
-      const token = localStorage.getItem('token')
+      // Prefer token from userStore (sessionStorage-backed) to support per-tab login isolation
+      const token = userStore.token || sessionStorage.getItem('token') || ''
       if (!token) {
         ElMessage.error('未登录，请重新登录')
         router.push('/login')
         return
       }
 
+      // Include the current user's id in request params to enforce user-scoped list on backend
+      const params = {
+        keyword: searchKeyword.value.trim(),
+        serviceType: serviceType.value,
+        pageNum: currentPage.value,
+        pageSize: pageSize.value,
+        userId: currentUserId.value // <-- added
+      }
+
       const res = await axios.get('/api/need/my-list', {
-        params: {
-          keyword: searchKeyword.value.trim(),
-          serviceType: serviceType.value,
-          pageNum: currentPage.value,
-          pageSize: pageSize.value
-        },
+        params,
         headers: { Authorization: `Bearer ${token}` }
       })
 
@@ -208,17 +213,17 @@ const fetchMyNeeds = async () => {
       }
       const data = res.data.data || {}
 
+      // Helper to extract owner id from various possible shapes
+      const getOwnerId = (need) => {
+        return need.userId ?? need.user_id ?? need.ownerId ?? need.owner_id ?? (need.user && (need.user.userId ?? need.user.id)) ?? null
+      }
+
       // If backend returned no records for current page but total > 0, it means currentPage is out-of-range (e.g., someone else created/removed items)
       if ((data.records || []).length === 0 && (data.total || 0) > 0 && currentPage.value > 1) {
         // reset to first page and fetch again to ensure owner sees their items
         currentPage.value = 1
         const retryRes = await axios.get('/api/need/my-list', {
-          params: {
-            keyword: searchKeyword.value.trim(),
-            serviceType: serviceType.value,
-            pageNum: currentPage.value,
-            pageSize: pageSize.value
-          },
+          params: { ...params, pageNum: currentPage.value },
           headers: { Authorization: `Bearer ${token}` }
         })
         if (retryRes.data?.code !== 200) throw new Error(retryRes.data?.msg || '获取需求失败')
@@ -235,6 +240,11 @@ const fetchMyNeeds = async () => {
               hasResponse: Boolean(need.hasResponse) || false,
               hasAccepted: Boolean(need.hasAccepted) || false
             }
+          })
+          // defensive filter: ensure only current user's needs are shown
+          .filter(need => {
+            const owner = String(getOwnerId(need) ?? '')
+            return owner === String(currentUserId.value)
           })
         filteredNeeds.value = [...myAllNeeds.value]
         total.value = retryData.total || 0
@@ -254,6 +264,11 @@ const fetchMyNeeds = async () => {
               hasResponse: Boolean(need.hasResponse) || false,
               hasAccepted: Boolean(need.hasAccepted) || false
             }
+          })
+          // defensive filter: ensure only current user's needs are shown
+          .filter(need => {
+            const owner = String(getOwnerId(need) ?? '')
+            return owner === String(currentUserId.value)
           })
 
         filteredNeeds.value = [...myAllNeeds.value]
@@ -325,7 +340,7 @@ const deleteNeed = async (needId) => {
         ElMessage.success('删除成功（Mock模式）')
       } else {
         // 后端
-        const token = localStorage.getItem('token')
+        const token = userStore.token || sessionStorage.getItem('token') || ''
         const res = await axios.delete(`/api/need/${needId}`, {
           headers: { Authorization: `Bearer ${token}` }
         })

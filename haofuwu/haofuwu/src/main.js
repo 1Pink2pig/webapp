@@ -49,7 +49,7 @@ app.config.globalProperties.$message = ElMessage
 app.config.globalProperties.$confirm = ElMessageBox.confirm
 
 // 如果本地已有 token，先设置到 axios headers 中，以便 initLoginState 发起的任何请求有头
-const savedToken = localStorage.getItem('token')
+const savedToken = sessionStorage.getItem('token')
 if (savedToken) {
   axios.defaults.headers.common['Authorization'] = `Bearer ${savedToken}`
 }
