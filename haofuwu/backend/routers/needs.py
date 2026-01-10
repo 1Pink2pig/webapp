@@ -4,6 +4,10 @@ from typing import List
 from .. import schemas, crud, models
 from ..database import get_db
 from ..utils import get_current_user
+import logging
+import json
+
+logger = logging.getLogger("uvicorn.error")
 
 router = APIRouter()
 
@@ -47,7 +51,17 @@ def list_needs(
         db: Session = Depends(get_db)
 ):
     skip = (page - 1) * size
-    return crud.get_needs(db, skip=skip, limit=size)
+    needs = crud.get_needs(db, skip=skip, limit=size)
+    # augment each NeedOut with hasAccepted
+    results = []
+    for n in needs:
+        # determine if any service for this need has been accepted
+        svc_list = crud.get_services_by_need(db, n.id)
+        has_accepted = any(s.get('status') == 1 for s in svc_list)
+        obj = n.dict() if hasattr(n, 'dict') else n
+        obj['hasAccepted'] = has_accepted
+        results.append(obj)
+    return results
 
 
 # ==========================================
@@ -64,6 +78,10 @@ def my_needs(
 ):
     # 获取所有匹配的需求
     all_needs = crud.get_needs_my_list(db, current_user.id, keyword=keyword, service_type=serviceType)
+    # for each need, tag hasAccepted
+    for n in all_needs:
+        svc_list = crud.get_services_by_need(db, n.id)
+        n.hasAccepted = any(s.get('status') == 1 for s in svc_list)
     total = len(all_needs)
     # 简单分页
     start = (pageNum - 1) * pageSize
@@ -77,32 +95,62 @@ def my_needs(
 # ==========================================
 @router.get("/detail/{need_id}")
 def need_detail(need_id: int, db: Session = Depends(get_db)):
-    n = crud.get_need(db, need_id)
-    if not n:
-        return {"code": 404, "msg": "需求未找到", "data": None}
-
-    # img_urls is stored as JSON (list) in the model
-    img_list = n.img_urls if n.img_urls else []
-    # try to get publisher username from relationship
-    publish_username = None
     try:
-        publish_username = n.owner.username if getattr(n, 'owner', None) else None
-    except Exception:
+        n = crud.get_need(db, need_id)
+        if not n:
+            return {"code": 404, "msg": "需求未找到", "data": None}
+
+        # Normalize img_urls: may be None, list, or legacy string
+        img_list = n.img_urls if getattr(n, 'img_urls', None) else []
+        if isinstance(img_list, str):
+            # try JSON decode, else split by comma
+            try:
+                img_list = json.loads(img_list)
+            except Exception:
+                img_list = img_list.split(',') if img_list else []
+
+        # try to get publisher username from relationship, fallback to DB lookup
         publish_username = None
-    data = {
-        "id": n.id,
-        "title": n.title,
-        "description": n.description,
-        "region": n.region,
-        "serviceType": n.service_type,
-        "imgUrls": img_list,
-        "videoUrl": n.video_url,
-        "status": int(n.status) if n.status is not None else 0,
-        "userId": n.owner_id,
-        "userName": publish_username,
-        "createTime": n.create_time
-    }
-    return {"code": 200, "msg": "ok", "data": data}
+        try:
+            publish_username = n.owner.username if getattr(n, 'owner', None) and getattr(n.owner, 'username', None) else None
+        except Exception:
+            publish_username = None
+
+        if not publish_username and getattr(n, 'owner_id', None):
+            try:
+                user = crud.get_user_by_id(db, n.owner_id)
+                publish_username = user.username if user else None
+            except Exception:
+                publish_username = None
+
+        # ensure we always return a string (avoid None) so frontend won't fallback to mock 'admin'
+        if not publish_username:
+            publish_username = ''
+
+        data = {
+            # provide both `id` and `needId` so frontend (which expects `needId`) works
+            "id": n.id,
+            "needId": n.id,
+            "title": n.title,
+            "description": n.description,
+            "region": n.region,
+            "serviceType": n.service_type,
+            "imgUrls": img_list,
+            "videoUrl": n.video_url,
+            # return status as string to be compatible with frontend comparisons (e.g. '0')
+            "status": str(int(n.status) if n.status is not None else 0),
+            # indicate whether there are any responses attached to this need
+            "hasResponse": bool(getattr(n, 'responses', None) and len(n.responses) > 0),
+            "userId": n.owner_id,
+            "userName": publish_username,
+            "createTime": n.create_time,
+            # include updateTime which the frontend displays
+            "updateTime": getattr(n, 'update_time', None)
+        }
+        return {"code": 200, "msg": "ok", "data": data}
+    except Exception as e:
+        logger.exception(f"Error in need_detail for id={need_id}: %s", e)
+        return {"code": 500, "msg": "服务器内部错误：无法获取需求详情", "data": None}
 
 
 # ==========================================

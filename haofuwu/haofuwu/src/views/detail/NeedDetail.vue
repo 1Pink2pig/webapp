@@ -135,7 +135,20 @@ const route = useRoute()
 const userStore = useUserStore()
 
 // 响应式状态
-const needId = route.params.id || ''
+// const needId = route.params.id || ''
+const rawNeedId = route.params.id || ''
+// normalize route param: ensure positive integer ID to avoid backend 422
+let needId = ''
+if (rawNeedId !== null && rawNeedId !== undefined) {
+  const parsed = Number(rawNeedId)
+  if (!Number.isFinite(parsed) || Number.isNaN(parsed)) {
+    needId = ''
+  } else {
+    // keep integer value
+    needId = Number.isInteger(parsed) ? parsed : Math.floor(parsed)
+  }
+}
+
 const needInfo = ref({
   needId: '',
   userId: '',
@@ -241,7 +254,7 @@ const apiCancelNeed = async (needId) => {
 const loadNeedDetail = async () => {
   // 空ID直接返回
   if (!needId) {
-    ElMessage.warning('缺少需求ID')
+    ElMessage.warning('缺少或无效的需求ID')
     return router.push('/login')
   }
 
@@ -262,7 +275,7 @@ const loadNeedDetail = async () => {
       // 本地
       needData = userStore.needList.find(item => item.needId === needId)
     } else {
-      // 后端
+      // 后端 - ensure we send numeric id to backend to prevent 422
       needData = await apiGetNeedDetail(needId)
     }
 
@@ -273,19 +286,29 @@ const loadNeedDetail = async () => {
     }
 
     // 补充发布人用户名
-    const publishUser = userStore.getUserById?.(needData.userId) || {}
-    needData.userName = publishUser.username || '未知用户'
+    // Prefer backend-provided username. Only use local mock lookup as a fallback.
+    if (!needData.userName || String(needData.userName).trim() === '') {
+      const publishUser = userStore.getUserById?.(needData.userId) || {}
+      needData.userName = publishUser.username || '未知用户'
+    }
 
     // 赋值并判断是否为发布者
     needInfo.value = {
       ...needInfo.value,
       ...needData
     }
-    isOwner.value = userStore.userInfo?.userId === needData.userId
+    // Normalize types for comparison (string/number)
+    isOwner.value = String(userStore.userInfo?.userId) === String(needData.userId)
 
   } catch (error) {
     console.error('加载需求详情异常：', error)
-    ElMessage.error('加载需求详情失败：未知错误')
+    if (error.response && error.response.status === 422) {
+      ElMessage.error('请求参数错误：无效的需求ID')
+      // 跳转回列表页或登录页，避免页面停留在错误状态
+      router.push('/login')
+    } else {
+      ElMessage.error('加载需求详情失败：未知错误')
+    }
   } finally {
     isLoading.value = false
   }
@@ -309,21 +332,11 @@ const goToResponseList = (needId) => {
     ElMessage.warning('缺少需求ID')
     return
   }
-  // 从全局服务自荐列表找该需求对应的第一个响应ID
-    const relatedService = userStore.serviceSelfList.find(item => item.needId === needId)
-    if (!relatedService) {
-      ElMessage.warning('该需求暂无响应数据')
-      return
-    }
-
-    // 传递正确的serviceId
-    router.push({
-      name: 'ServiceConfirm',
-      params: { serviceId: relatedService.serviceId }
-    }).catch(err => {
-      console.error('跳转响应列表失败：', err)
-      ElMessage.error('跳转失败，请检查路由配置')
-    })
+  // 跳转到响应列表页面，让发布人查看所有响应
+  router.push({ name: 'ServiceResponseList', params: { id: needId } }).catch(err => {
+    console.error('跳转响应列表失败：', err)
+    ElMessage.error('跳转失败，请检查路由配置')
+  })
 }
 
 // 返回上一页
@@ -445,7 +458,7 @@ onMounted(() => {
 :deep(.el-descriptions-item__label) {
   background-color: #F3E8CE !important;
   color: #4A5568 !important;
-  font-weight: 500;
+  font-weight: 500 !important;
 }
 
 :deep(.el-descriptions-item__content) {
@@ -570,3 +583,4 @@ onMounted(() => {
 }
 
 </style>
+

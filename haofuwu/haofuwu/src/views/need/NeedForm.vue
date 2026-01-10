@@ -69,7 +69,17 @@ const userStore = useUserStore()
 const formRef = ref(null)
 const isLoading = ref(false)
 
-const needId = route.params.id
+// Normalize and validate route param id to ensure we only use a positive integer
+const rawNeedId = route.params.id || ''
+let needId = ''
+if (rawNeedId !== null && rawNeedId !== undefined) {
+  const parsed = Number(rawNeedId)
+  if (!Number.isFinite(parsed) || Number.isNaN(parsed)) {
+    needId = ''
+  } else {
+    needId = Number.isInteger(parsed) ? parsed : Math.floor(parsed)
+  }
+}
 const isEdit = ref(!!needId) // 是否是编辑模式
 
 // 表单数据
@@ -103,6 +113,11 @@ const getMockNeedDetail = () => {
  */
 const getNeedDetail = async () => {
   try {
+    if (!needId) {
+      ElMessage.error('无效的需求ID，无法获取详情')
+      return router.push('/need/list')
+    }
+
     isLoading.value = true
     const token = userStore.token || localStorage.getItem('token') || ''
     const res = await axios.get(`${baseUrl}/api/need/detail/${needId}`, {
@@ -122,9 +137,14 @@ const getNeedDetail = async () => {
       router.push('/login')
     }
   } catch (error) {
-    ElMessage.error('网络错误，无法获取需求详情')
     console.error('getNeedDetail error:', error)
-    router.push('/login')
+    if (error.response && error.response.status === 422) {
+      ElMessage.error('请求参数错误：无效的需求ID')
+      router.push('/need/list')
+    } else {
+      ElMessage.error('网络错误，无法获取需求详情')
+      router.push('/login')
+    }
   } finally {
     isLoading.value = false
   }
@@ -145,6 +165,7 @@ const submitNeed = async () => {
       region: form.value.region
     }
 
+    // Use normalized needId for edit
     const apiUrl = isEdit.value ? `/api/need/${needId}` : '/api/need/'
     const method = isEdit.value ? 'put' : 'post'
     const token = userStore.token || localStorage.getItem('token') || ''
@@ -158,17 +179,50 @@ const submitNeed = async () => {
     })
 
     // 兼容后端返回格式
-    if (res.data.code === 200 || res.status === 200) {
+    // Determine success and try to extract created/updated need id.
+    if (res.status === 200) {
+      // success (FastAPI/axios)
       ElMessage.success(isEdit.value ? '需求修改成功' : '需求发布成功')
+
+      // Try to extract id from multiple possible response shapes:
+      // 1) Envelope: { code:200, data: { id / needId } }
+      // 2) Raw resource: { id, ... } (response_model=NeedOut)
+      let createdId = null
+      try {
+        const body = res.data
+        if (body) {
+          if (body.code === 200 && body.data) {
+            const d = body.data
+            createdId = d.id ?? d.needId ?? d.id
+          } else if (body.id || body.needId) {
+            // direct NeedOut object
+            createdId = body.id ?? body.needId
+          }
+        }
+      } catch (e) {
+        // ignore parse errors
+        createdId = null
+      }
+
+      if (createdId !== null && createdId !== undefined && String(createdId).trim() !== '') {
+        const idNum = Number(createdId)
+        if (Number.isFinite(idNum) && !Number.isNaN(idNum)) {
+          return router.push(`/need/detail/${idNum}`)
+        }
+      }
+
+      // fallback to list page if we couldn't extract an id (e.g. update endpoint)
       router.push('/need/list')
     } else {
-      ElMessage.error(res.data.msg || (isEdit.value ? '修改失败' : '发布失败'))
+      ElMessage.error(res.data?.msg || (isEdit.value ? '修改失败' : '发布失败'))
     }
   } catch (error) {
     console.error('submitNeed error:', error)
     // 详细报错提示
     if (error.response && error.response.status === 404) {
        ElMessage.error('接口地址错误 (404)，请检查后端路由')
+    } else if (error.response && error.response.status === 422) {
+       ElMessage.error('请求参数错误：请检查提交的数据或需求ID')
     } else {
        ElMessage.error('网络错误，提交失败')
     }
@@ -185,6 +239,11 @@ onMounted(async () => {
 
   // 编辑模式
   if (isEdit.value) {
+    if (!needId) {
+      ElMessage.error('无效的需求ID，无法进入编辑页面')
+      return router.push('/need/list')
+    }
+
     if (isMock) {
       const need = getMockNeedDetail()
       if (!need) {

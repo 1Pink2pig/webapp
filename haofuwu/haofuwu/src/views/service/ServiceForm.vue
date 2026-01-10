@@ -170,13 +170,49 @@ const getServiceDetail = async () => {
 const submitService = async () => {
   try {
     isLoading.value = true
-    const apiUrl = isEdit.value ? `/api/service/update/${serviceId}` : '/api/service/add'
+    // Use backend's registered endpoints:
+    // - create: POST /api/service/   (services.router.post("/"))
+    // - update: PUT  /api/service/{id}  (add RESTful update endpoint on backend if needed)
+    const apiUrl = isEdit.value ? `/api/service/${serviceId}` : '/api/service/'
+    const method = isEdit.value ? 'put' : 'post'
     const submitData = {
       ...form.value,
       content: form.value.description
     }
     delete submitData.description
-    const res = await axios[isEdit.value ? 'put' : 'post'](apiUrl, submitData, {
+
+    // If creating new service, pre-check the linked need status to avoid posting to closed/answered needs
+    if (!isEdit.value && submitData.needId) {
+      try {
+        const needRes = await axios.get(`/api/need/detail/${submitData.needId}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
+        })
+        if (!needRes || !needRes.data) {
+          ElMessage.error('无法验证关联需求状态，提交已取消')
+          return false
+        }
+        if (needRes.data.code !== 200) {
+          ElMessage.error(needRes.data.msg || '关联需求不存在，无法提交')
+          return false
+        }
+        const needData = needRes.data.data || {}
+        // need.status '0' means active; hasResponse indicates prior responses
+        if (String(needData.status) !== '0') {
+          ElMessage.error('该需求已关闭或取消，无法提供服务')
+          return false
+        }
+        if (needData.hasResponse) {
+          ElMessage.error('该需求已有响应或已被确认，无法再次提供服务')
+          return false
+        }
+      } catch (e) {
+        console.error('验证需求状态失败：', e)
+        ElMessage.error('验证需求状态失败，提交已取消')
+        return false
+      }
+    }
+
+    const res = await axios[method](apiUrl, submitData, {
       headers: {
         Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
         'Content-Type': 'application/json'
@@ -228,7 +264,7 @@ onMounted(async () => {
     // 后端
     if (needId && needId !== 'none') {
       try {
-        const res = await axios.get(`/api/need/info/${needId}`, {
+        const res = await axios.get(`/api/need/detail/${needId}`, {
           headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
         })
         form.value.needTitle = res.data.code === 200 ? res.data.data.title : '未知需求'

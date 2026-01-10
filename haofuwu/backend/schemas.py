@@ -47,6 +47,7 @@ class NeedOut(BaseModel):
     videoUrl: Optional[str] = None
     status: int
     hasResponse: Optional[bool] = False
+    hasAccepted: Optional[bool] = False
     userId: int = 0
     userName: Optional[str] = None
     createTime: Optional[datetime.datetime] = None

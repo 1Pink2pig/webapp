@@ -109,7 +109,7 @@
 
 <script setup>
 /* eslint-disable no-undef */
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/store/userStore'
 import { ElMessage } from 'element-plus'
@@ -125,6 +125,18 @@ const props = defineProps({
   }
 })
 
+// --- normalize incoming id to numeric service id ---
+const normalizeId = (v) => {
+  if (v === null || v === undefined || v === '') return null
+  if (typeof v === 'number') return Number(v)
+  const s = String(v)
+  // accept 'service_123' or '123'
+  const m = s.match(/(\d+)/)
+  return m ? Number(m[1]) : null
+}
+
+const resolvedServiceId = normalizeId(props.id)
+
 // 初始化
 const router = useRouter()
 const userStore = useUserStore()
@@ -132,23 +144,18 @@ const isLoading = ref(false)
 const serviceDetail = ref(null)
 const matchedNeed = ref({})
 
-// 调试
-console.log('接收的服务ID：', props.id)
-console.log('全局服务自荐列表：', userStore.serviceSelfList)
-console.log('全局需求列表：', userStore.needList)
-console.log('需求列表中的needId格式：', userStore.needList.map(item => item.needId))
-
 // 服务自荐人
-const servicePublisher = computed(() => {
-  if (!serviceDetail.value || !serviceDetail.value.userId) return {}
-  return userStore.getUserById(serviceDetail.value.userId) || {}
-})
+// replace computed (which used mock store) with refs populated from backend
+const servicePublisher = ref({})
 
 // 需求发布人
-const needPublisher = computed(() => {
-  if (!matchedNeed.value || !matchedNeed.value.userId) return {}
-  return userStore.getUserById(matchedNeed.value.userId) || {}
-})
+const needPublisher = ref({})
+
+// 调试
+console.log('接收的原始服务ID：', props.id)
+console.log('解析后的服务ID（数字）：', resolvedServiceId)
+console.log('全局服务自荐列表：', userStore.serviceSelfList)
+console.log('全局需求列表：', userStore.needList)
 
 // 格式化时间
 const formatTime = (timeStr) => {
@@ -200,34 +207,42 @@ const matchNeedDirectly = (needId) => {
 
 const getMockServiceDetail = () => {
   const serviceList = userStore.serviceSelfList || []
-  const targetId = props.id.startsWith('service_') ? props.id : `service_${props.id}`
-  const service = serviceList.find(item =>
-    String(item.serviceId) === String(targetId) ||
-    String(item.serviceId).replace('service_', '') === String(props.id)
-  )
+  if (resolvedServiceId === null) {
+    serviceDetail.value = null
+    matchedNeed.value = {}
+    ElMessage.warning(`服务ID格式不正确：${props.id}`)
+    return
+  }
+
+  const service = serviceList.find(item => {
+    // normalize stored serviceId which might be 'service_1' or numeric
+    const sid = item.serviceId ?? item.id ?? item.service_id
+    const parsed = normalizeId(sid)
+    return parsed === resolvedServiceId
+  })
 
   if (service) {
     serviceDetail.value = {
-      serviceId: service.serviceId || '',
-      needId: service.needId || '',
-      serviceType: service.serviceType || '',
+      serviceId: resolvedServiceId,
+      needId: normalizeId(service.needId ?? service.need_id),
+      serviceType: service.serviceType || service.service_type || '',
       title: service.title || '',
       content: service.content || '',
-      userId: service.userId || '',
+      userId: service.userId || service.user_id || '',
       createTime: service.createTime || new Date().toISOString(),
       updateTime: service.updateTime || new Date().toISOString(),
-      status: service.status || 0,
+      status: Number(service.status ?? 0),
       files: service.files || []
     }
     matchedNeed.value = matchNeedDirectly(serviceDetail.value.needId)
-    console.log('最终匹配结果：', {
+    console.log('最终匹配结果（mock）：', {
       serviceDetail: serviceDetail.value,
       matchedNeed: matchedNeed.value
     })
   } else {
     serviceDetail.value = null
     matchedNeed.value = {}
-    ElMessage.warning(`未找到ID为【${props.id}】的服务详情`)
+    ElMessage.warning(`未找到ID为【${props.id}】的服务详情（本地mock）`)
   }
 }
 
@@ -236,9 +251,16 @@ const getMockServiceDetail = () => {
  */
 const getApiServiceDetail = async () => {
   try {
+    if (resolvedServiceId === null) {
+      ElMessage.error('服务ID无效，无法请求详情')
+      serviceDetail.value = null
+      matchedNeed.value = {}
+      return
+    }
+
     isLoading.value = true
-    //获取服务详情
-    const serviceRes = await axios.get(`/api/service/detail/${props.id}`, {
+    //获取服务详情（使用解析后的数字 id）
+    const serviceRes = await axios.get(`/api/service/detail/${resolvedServiceId}`, {
       headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
     })
     if (serviceRes.data.code !== 200) {
@@ -247,7 +269,37 @@ const getApiServiceDetail = async () => {
       ElMessage.error(serviceRes.data.msg || '获取服务详情失败')
       return
     }
-    serviceDetail.value = serviceRes.data.data
+
+    // normalize backend response to frontend-friendly fields
+    const raw = serviceRes.data.data || {}
+    serviceDetail.value = {
+      serviceId: normalizeId(raw.id ?? raw.serviceId),
+      needId: normalizeId(raw.needId ?? raw.need_id),
+      serviceType: raw.serviceType ?? raw.service_type,
+      title: raw.title,
+      content: raw.content,
+      userId: raw.userId ?? raw.user_id,
+      createTime: raw.createTime ?? raw.create_time,
+      updateTime: raw.updateTime ?? raw.update_time,
+      status: Number(raw.status ?? 0),
+      files: raw.files || [],
+      // accept backend-provided userName if present
+      userName: raw.userName ?? raw.user_name ?? ''
+    }
+
+    // populate service publisher: prefer backend's userName, otherwise fetch by userId
+    if (serviceDetail.value && serviceDetail.value.userName) {
+      servicePublisher.value = { username: serviceDetail.value.userName }
+    } else if (serviceDetail.value && serviceDetail.value.userId) {
+      try {
+        const u = await fetchUserById(serviceDetail.value.userId)
+        servicePublisher.value = u || {}
+      } catch (e) {
+        servicePublisher.value = {}
+      }
+    } else {
+      servicePublisher.value = {}
+    }
 
     if (serviceDetail.value.needId) {
       const needRes = await axios.get(`/api/need/detail/${serviceDetail.value.needId}`, {
@@ -255,13 +307,32 @@ const getApiServiceDetail = async () => {
       })
       if (needRes.data.code === 200) {
         matchedNeed.value = needRes.data.data
+        // populate need publisher: prefer backend's userName, otherwise fetch
+        try {
+          const needUserName = matchedNeed.value.userName || matchedNeed.value.username || matchedNeed.value.user_name
+          if (needUserName) {
+            needPublisher.value = { username: needUserName }
+          } else {
+            const needUserId = matchedNeed.value.userId ?? matchedNeed.value.user_id
+            if (needUserId) {
+              const needUser = await fetchUserById(needUserId)
+              needPublisher.value = needUser || {}
+            } else {
+              needPublisher.value = {}
+            }
+          }
+        } catch (e) {
+          needPublisher.value = {}
+        }
         console.log('后端模式匹配需求成功：', matchedNeed.value)
       } else {
         matchedNeed.value = {}
+        needPublisher.value = {}
         ElMessage.warning(`未找到ID为【${serviceDetail.value.needId}】的需求`)
       }
     } else {
       matchedNeed.value = {}
+      needPublisher.value = {}
       ElMessage.warning('该服务自荐未关联任何需求')
     }
   } catch (error) {
@@ -274,9 +345,7 @@ const getApiServiceDetail = async () => {
   }
 }
 
-/**
- * 统一获取服务详情
- */
+// 统一获取服务详情
 const getServiceDetail = async () => {
   isLoading.value = true
   try {
@@ -312,6 +381,28 @@ onMounted(async () => {
 // 返回上一页
 const goBack = () => {
   router.back()
+}
+
+// 根据用户ID获取用户信息（后端接口）
+const fetchUserById = async (userId) => {
+  if (!userId) return null
+  const idNum = normalizeToNumberId(userId)
+  if (!idNum) return null
+
+  try {
+    const baseUrl = process.env.VUE_APP_API_BASE_URL || 'http://127.0.0.1:8000'
+    const res = await axios.get(`${baseUrl}/api/user/detail/${idNum}`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
+    })
+    if (res && res.data && res.data.code === 200 && res.data.data) {
+      return res.data.data
+    }
+  } catch (e) {
+    console.warn('fetchUserById backend lookup failed:', e && e.message)
+  }
+
+  // Do NOT fallback to local mock store; return null to indicate backend unavailable
+  return null
 }
 </script>
 

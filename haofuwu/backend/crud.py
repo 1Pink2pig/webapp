@@ -94,6 +94,13 @@ def get_needs(db: Session, skip: int = 0, limit: int = 10):
             username = n.owner.username if getattr(n, 'owner', None) else None
         except Exception:
             username = None
+        # fallback: try fetching user from DB if owner relationship not available
+        if not username and getattr(n, 'owner_id', None):
+            try:
+                user = get_user_by_id(db, n.owner_id)
+                username = user.username if user else None
+            except Exception:
+                username = None
         results.append(schemas.NeedOut(
             id=n.id,
             title=n.title,
@@ -138,6 +145,13 @@ def get_needs_my_list(db: Session, user_id: int, keyword: str = None, service_ty
             username = n.owner.username if getattr(n, 'owner', None) else None
         except Exception:
             username = None
+        # fallback: try fetching user from DB if owner relationship not available
+        if not username and getattr(n, 'owner_id', None):
+            try:
+                user = get_user_by_id(db, n.owner_id)
+                username = user.username if user else None
+            except Exception:
+                username = None
 
         # 构造 NeedOut 对象
         results.append(schemas.NeedOut(
@@ -261,3 +275,107 @@ def get_my_service_list(db: Session, user_id: int):
         ))
     return results
 
+
+def update_service(db: Session, service_id: int, owner_id: int, svc_in: schemas.ServiceCreate):
+    """Update a service record. Only the owner may update their service.
+    Fields provided in svc_in will overwrite existing values.
+    """
+    db_svc = get_service(db, service_id)
+    if not db_svc:
+        return None
+    if db_svc.owner_id != owner_id:
+        # caller should check permissions and return appropriate response
+        return False
+
+    # Update only provided fields
+    if getattr(svc_in, 'title', None) is not None:
+        db_svc.title = svc_in.title
+    if getattr(svc_in, 'content', None) is not None:
+        db_svc.content = svc_in.content
+    if getattr(svc_in, 'serviceType', None) is not None:
+        db_svc.service_type = svc_in.serviceType
+    if getattr(svc_in, 'files', None) is not None:
+        db_svc.files = svc_in.files
+    if getattr(svc_in, 'needId', None) is not None:
+        db_svc.need_id = svc_in.needId
+
+    db.commit()
+    db.refresh(db_svc)
+    return db_svc
+
+
+def get_services_by_need(db: Session, need_id: int):
+    """Return a list of service dicts for a given need id, including publisher username."""
+    query = db.query(models.Service).filter(models.Service.need_id == need_id)
+    services = query.order_by(models.Service.create_time.desc()).all()
+    results = []
+    for s in services:
+        username = None
+        try:
+            username = s.owner.username if getattr(s, 'owner', None) else None
+        except Exception:
+            username = None
+        if not username and getattr(s, 'owner_id', None):
+            try:
+                user = get_user_by_id(db, s.owner_id)
+                username = user.username if user else None
+            except Exception:
+                username = None
+        results.append({
+            'id': s.id,
+            'serviceId': s.id,
+            'needId': s.need_id,
+            'serviceType': s.service_type,
+            'title': s.title,
+            'content': s.content,
+            'status': int(s.status) if s.status is not None else 0,
+            'userId': s.owner_id,
+            'userName': username or '',
+            'createTime': s.create_time
+        })
+    return results
+
+
+def accept_service(db: Session, service_id: int, need_owner_id: int):
+    """Accept a service response. Only the owner of the related need may accept.
+    When accepting, mark the chosen service as status=1 and mark other services for the same need as status=2.
+    Returns True on success, False on permission error, None if service not found.
+    """
+    svc = get_service(db, service_id)
+    if not svc:
+        return None
+    # ensure current user owns the need
+    if not svc.need_id:
+        return False
+    need = get_need(db, svc.need_id)
+    if not need or need.owner_id != need_owner_id:
+        return False
+
+    # set chosen service to accepted
+    svc.status = 1
+    # set other services for the same need to rejected
+    others = db.query(models.Service).filter(models.Service.need_id == svc.need_id, models.Service.id != svc.id).all()
+    for o in others:
+        o.status = 2
+    db.commit()
+    db.refresh(svc)
+    return True
+
+
+def reject_service(db: Session, service_id: int, need_owner_id: int):
+    """Reject a service response. Only the owner of the related need may reject.
+    Returns True on success, False on permission error, None if service not found.
+    """
+    svc = get_service(db, service_id)
+    if not svc:
+        return None
+    if not svc.need_id:
+        return False
+    need = get_need(db, svc.need_id)
+    if not need or need.owner_id != need_owner_id:
+        return False
+
+    svc.status = 2
+    db.commit()
+    db.refresh(svc)
+    return True

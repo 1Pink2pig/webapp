@@ -118,7 +118,8 @@ const generateInitNeeds = () => {
   for (let i = 0; i < 10; i++) {
     const randomRegion = regionPool[Math.floor(Math.random() * regionPool.length)]
     needs.push({
-      needId: `need_${needId++}`,
+      // use numeric IDs (number) instead of string 'need_X' to be compatible with backend-style numeric ids
+      needId: needId++,
       userId: '1',
       region: randomRegion,
       serviceType: '居家维修',
@@ -136,7 +137,7 @@ const generateInitNeeds = () => {
   for (let i = 0; i < 11; i++) {
     const randomRegion = regionPool[Math.floor(Math.random() * regionPool.length)]
     needs.push({
-      needId: `need_${needId++}`,
+      needId: needId++,
       userId: '2',
       region: randomRegion,
       serviceType: '清洁保洁',
@@ -154,7 +155,7 @@ const generateInitNeeds = () => {
   for (let i = 0; i < 11; i++) {
     const randomRegion = regionPool[Math.floor(Math.random() * regionPool.length)]
     needs.push({
-      needId: `need_${needId++}`,
+      needId: needId++,
       userId: '3',
       region: randomRegion,
       serviceType: '生活照料',
@@ -174,7 +175,19 @@ const generateInitNeeds = () => {
 // 初始化
 const initNeedList = () => {
   const storedNeeds = localStorage.getItem('mockNeedList')
-  return storedNeeds ? JSON.parse(storedNeeds) : generateInitNeeds()
+  if (storedNeeds) {
+    try {
+      const parsed = JSON.parse(storedNeeds)
+      // normalize legacy string ids like 'need_12' to numeric IDs and ensure numeric type
+      return parsed.map(n => ({
+        ...n,
+        needId: (typeof n.needId === 'string' && n.needId.startsWith('need_')) ? Number(n.needId.replace('need_', '')) : Number(n.needId)
+      }))
+    } catch (e) {
+      return generateInitNeeds()
+    }
+  }
+  return generateInitNeeds()
 }
 
 //服务自荐
@@ -183,7 +196,7 @@ const generateInitServiceSelf = () => {
   return [
     {
       serviceId: 'service_1',
-      needId: 'need_1', // 关联：居家维修-need_1
+      needId: 1, // 关联：居家维修 - use numeric id
       userId: '2',
       serviceType: '居家维修',
       title: '管道维修服务自荐',
@@ -194,7 +207,7 @@ const generateInitServiceSelf = () => {
     },
     {
       serviceId: 'service_2',
-      needId: 'need_22', // 关联：生活照料-need_22
+      needId: 22, // 关联：生活照料
       userId: '2',
       serviceType: '生活照料',
       title: '助老服务上门陪护',
@@ -205,7 +218,7 @@ const generateInitServiceSelf = () => {
     },
     {
       serviceId: 'service_3',
-      needId: 'need_11', // 关联：清洁保洁-need_11
+      needId: 11, // 关联：清洁保洁
       userId: '3',
       serviceType: '清洁保洁',
       title: '新房开荒保洁服务',
@@ -220,7 +233,18 @@ const generateInitServiceSelf = () => {
 // 初始化
 const initServiceSelfList = () => {
   const storedServiceSelf = localStorage.getItem('mockServiceSelfList')
-  return storedServiceSelf ? JSON.parse(storedServiceSelf) : generateInitServiceSelf()
+  if (storedServiceSelf) {
+    try {
+      const parsed = JSON.parse(storedServiceSelf)
+      return parsed.map(s => ({
+        ...s,
+        needId: (typeof s.needId === 'string' && s.needId.startsWith('need_')) ? Number(s.needId.replace('need_', '')) : Number(s.needId)
+      }))
+    } catch (e) {
+      return generateInitServiceSelf()
+    }
+  }
+  return generateInitServiceSelf()
 }
 
 export const useUserStore = defineStore('user', {
@@ -369,19 +393,22 @@ export const useUserStore = defineStore('user', {
 
 
     getUserById(userId) {
-      return mockUsers.find(u => u.userId === userId) || null
+      // ensure comparison is type-insensitive by converting both sides to string
+      if (userId === undefined || userId === null) return null
+      const idStr = String(userId)
+      return mockUsers.find(u => String(u.userId) === idStr) || null
     },
 
     //需求操作
     addNeed(needData) {
       let maxId = 0
       this.needList.forEach(item => {
-        const idNum = parseInt(item.needId.replace('need_', ''))
+        const idNum = Number(item.needId)
         if (!isNaN(idNum) && idNum > maxId) {
           maxId = idNum
         }
       })
-      const newNeedId = `need_${maxId + 1}`
+      const newNeedId = maxId + 1
       const newNeed = {
         needId: newNeedId,
         userId: this.userInfo.userId,
@@ -437,7 +464,7 @@ export const useUserStore = defineStore('user', {
     addServiceSelf(serviceData) {
       let maxId = 0
       this.serviceSelfList.forEach(item => {
-        const idNum = parseInt(item.serviceId.replace('service_', ''))
+        const idNum = Number(item.serviceId.replace('service_', ''))
         if (!isNaN(idNum) && idNum > maxId) {
           maxId = idNum
         }
@@ -459,7 +486,6 @@ export const useUserStore = defineStore('user', {
       localStorage.setItem('mockServiceSelfList', JSON.stringify(this.serviceSelfList))
       return newService
     },
-
     //删除服务自荐
     deleteServiceSelf(serviceId) {
       const index = this.serviceSelfList.findIndex(item => item.serviceId === serviceId && item.status === 0)
@@ -470,7 +496,6 @@ export const useUserStore = defineStore('user', {
       }
       return false
     },
-
     //修改服务自荐
     updateServiceSelf(serviceId, updatedData) {
       const index = this.serviceSelfList.findIndex(item => item.serviceId === serviceId && item.status === 0)

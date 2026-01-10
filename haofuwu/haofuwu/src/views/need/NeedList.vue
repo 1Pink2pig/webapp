@@ -207,15 +207,58 @@ const fetchMyNeeds = async () => {
         throw new Error(res.data?.msg || '获取需求失败')
       }
       const data = res.data.data || {}
-      myAllNeeds.value = (data.records || [])
-        .map(need => ({
-          ...need,
-          status: Number(need.status),
-          hasResponse: Boolean(need.hasResponse) || false
-        }))
 
-      filteredNeeds.value = [...myAllNeeds.value]
-      total.value = data.total || 0
+      // If backend returned no records for current page but total > 0, it means currentPage is out-of-range (e.g., someone else created/removed items)
+      if ((data.records || []).length === 0 && (data.total || 0) > 0 && currentPage.value > 1) {
+        // reset to first page and fetch again to ensure owner sees their items
+        currentPage.value = 1
+        const retryRes = await axios.get('/api/need/my-list', {
+          params: {
+            keyword: searchKeyword.value.trim(),
+            serviceType: serviceType.value,
+            pageNum: currentPage.value,
+            pageSize: pageSize.value
+          },
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        if (retryRes.data?.code !== 200) throw new Error(retryRes.data?.msg || '获取需求失败')
+        const retryData = retryRes.data.data || {}
+        myAllNeeds.value = (retryData.records || [])
+          .map(need => {
+            let rawId = need.needId ?? need.id ?? need.need_id ?? null
+            if (typeof rawId === 'string' && rawId.startsWith('need_')) rawId = Number(rawId.replace('need_', ''))
+            const idNum = Number(rawId)
+            return {
+              ...need,
+              needId: Number.isFinite(idNum) && !Number.isNaN(idNum) ? idNum : rawId,
+              status: Number(need.status),
+              hasResponse: Boolean(need.hasResponse) || false,
+              hasAccepted: Boolean(need.hasAccepted) || false
+            }
+          })
+        filteredNeeds.value = [...myAllNeeds.value]
+        total.value = retryData.total || 0
+      } else {
+        myAllNeeds.value = (data.records || [])
+          .map(need => {
+            // Normalize various possible id fields into a numeric needId when possible.
+            let rawId = need.needId ?? need.id ?? need.need_id ?? null
+            if (typeof rawId === 'string' && rawId.startsWith('need_')) {
+              rawId = Number(rawId.replace('need_', ''))
+            }
+            const idNum = Number(rawId)
+            return {
+              ...need,
+              needId: Number.isFinite(idNum) && !Number.isNaN(idNum) ? idNum : rawId,
+              status: Number(need.status),
+              hasResponse: Boolean(need.hasResponse) || false,
+              hasAccepted: Boolean(need.hasAccepted) || false
+            }
+          })
+
+        filteredNeeds.value = [...myAllNeeds.value]
+        total.value = data.total || 0
+      }
     }
   } catch (error) {
     const errMsg = isMock.value
@@ -322,11 +365,31 @@ const goToAddNeed = () => {
 }
 
 const goToNeedDetail = (needId) => {
-  router.push(`/need/detail/${needId}`)
+  // basic validation to avoid routing with invalid IDs (e.g. undefined or non-numeric)
+  if (needId === undefined || needId === null || String(needId).trim() === '') {
+    ElMessage.error('无效的需求ID，无法跳转详情')
+    return
+  }
+  const idNum = Number(needId)
+  if (!Number.isInteger(idNum) || idNum <= 0) {
+    ElMessage.error('需求ID格式不正确')
+    return
+  }
+  router.push(`/need/detail/${idNum}`)
 }
 
 const goToEditNeed = (needId) => {
-  router.push(`/need/form/${needId}`)
+  // reuse same validation
+  if (needId === undefined || needId === null || String(needId).trim() === '') {
+    ElMessage.error('无效的需求ID，无法跳转编辑')
+    return
+  }
+  const idNum = Number(needId)
+  if (!Number.isInteger(idNum) || idNum <= 0) {
+    ElMessage.error('需求ID格式不正确')
+    return
+  }
+  router.push(`/need/form/${idNum}`)
 }
 
 onMounted(async () => {

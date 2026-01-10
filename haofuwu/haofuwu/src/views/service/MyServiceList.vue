@@ -48,17 +48,17 @@
         <!-- 发布人显示用户名 -->
         <el-table-column label="发布人" width="120">
           <template #default="scope">
-            {{ userStore.getUserById(scope.row.userId)?.username || '未知用户' }}
+            {{ scope.row.userName || userStore.getUserById(scope.row.userId)?.username || '未知用户' }}
           </template>
         </el-table-column>
         <el-table-column label="发布时间" prop="createTime" width="180"></el-table-column>
         <el-table-column label="状态" prop="status" width="100">
           <template #default="scope">
             <el-tag
-              :type="scope.row.status === '0' ? 'info' : 'success'"
+              :type="scope.row.hasAccepted ? 'success' : (scope.row.hasResponse ? 'info' : (scope.row.status === '0' ? 'warning' : 'danger'))"
               style="background: #F3E8CE; color: #9A7B68; border: none;"
             >
-              {{ scope.row.status === '0' ? '待响应' : '已确认' }}
+              {{ scope.row.hasAccepted ? '已确定' : (scope.row.hasResponse ? '已响应' : (scope.row.status === '0' ? '待响应' : '已取消')) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -74,11 +74,12 @@
               type="text"
               @click="goToServiceForm(scope.row.needId)"
               class="operate-btn"
-              :disabled="scope.row.status !== '0'"
-              :style="scope.row.status !== '0' ? 'color: #ccc; cursor: not-allowed;' : ''"
+              :disabled="scope.row.status !== '0' || scope.row.hasAccepted"
+              :style="(scope.row.status !== '0' || scope.row.hasAccepted) ? 'color: #ccc; cursor: not-allowed;' : ''"
             >
               提供服务
             </el-button>
+            <el-tag v-if="scope.row.hasAccepted" type="success" style="margin-left:8px">已确定</el-tag>
           </template>
         </el-table-column>
       </el-table>
@@ -137,36 +138,49 @@ const getServiceList = async () => {
   try {
     isLoading.value = true
     const params = {
-      keyword: searchKeyword.value,
-      serviceType: serviceType.value
+      // use backend need list params
+      page: currentPage.value,
+      size: pageSize.value,
+      keyword: searchKeyword.value || undefined,
+      serviceType: serviceType.value || undefined
     }
 
-    const res = await axios.get('/api/service-self/my-list', {
+    // 请求公开的需求列表（改为调用 /api/need/），这是最小改动且能让“我服务”页面看到其他用户发布的需求
+    const res = await axios.get('/api/need/', {
       params,
       headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
     })
 
-    if (res.data.code === 200) {
-      // 兼容数组或分页对象
-      const resultData = res.data.data
-      if (Array.isArray(resultData)) {
-        mockServiceList.value = resultData
-        total.value = resultData.length
-      } else if (resultData && resultData.records) {
-        mockServiceList.value = resultData.records
-        total.value = resultData.total
-      }
+    if (res.data.code === 200 || Array.isArray(res.data)) {
+      // 后端返回的是 NeedOut 的数组或包裹在 {code,msg,data}
+      const dataArray = Array.isArray(res.data) ? res.data : (res.data.data || [])
+
+      // 将 NeedOut 对象映射为组件使用的字段（兼容旧的 mock 结构）
+      mockServiceList.value = dataArray.map(n => ({
+        needId: n.id || n.needId || n.need_id,
+        title: n.title,
+        serviceType: n.serviceType || n.service_type,
+        userId: n.userId || n.user_id || n.owner_id,
+        userName: n.userName || n.username || null,
+        createTime: n.createTime || n.create_time,
+        // always use string so template comparisons like scope.row.status === '0' work reliably
+        status: String(n.status ?? 0),
+        hasResponse: !!(n.hasResponse || n.has_response),
+        hasAccepted: !!(n.hasAccepted || n.has_accepted)
+      }))
+
+      total.value = mockServiceList.value.length
     } else {
-      ElMessage.error(res.data.msg || '获取服务列表失败')
+      ElMessage.error(res.data.msg || '获取需求列表失败')
     }
   } catch (error) {
-    console.error('获取服务列表失败：', error)
+    console.error('获取需求列表失败：', error)
     if (error.response && error.response.status === 401) {
        ElMessage.error('登录已过期，请重新登录')
     } else if (error.response && error.response.status === 404) {
-       ElMessage.error('接口 404 未找到，请检查后端 main.py 是否注册了 service-self')
+       ElMessage.error('接口 404 未找到，请检查后端是否注册了 need 路由')
     } else {
-       ElMessage.error('网络错误，无法获取服务列表')
+       ElMessage.error('网络错误，无法获取需求列表')
     }
   } finally {
     isLoading.value = false
@@ -222,16 +236,15 @@ watch(
 onMounted(() => {
   userStore.initLoginState()
 
-  //校验登录态
-  if (!userStore.isLogin) {
-    router.push('/login')
-    return
+  // 获取当前登录用户ID（如果已登录）
+  if (userStore.isLogin && userStore.userInfo) {
+    currentUserId.value = userStore.userInfo.userId || ''
+  } else {
+    // 不强制跳转到登录页，未登录用户也可以查看公开的需求列表
+    currentUserId.value = ''
   }
 
-  //获取当前登录用户ID
-  currentUserId.value = userStore.userInfo.userId || ''
-
-  // 初始化
+  // 初始化：无论是否登录，都允许查看公开需求列表
   if (isMock) {
     mockServiceList.value = userStore.needList
     total.value = filteredList.value.length

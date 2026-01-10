@@ -15,6 +15,7 @@ import NeedForm from '@/views/need/NeedForm.vue'
 import ServiceList from '@/views/service/ServiceList.vue'
 import ServiceDetail from '@/views/detail/ServiceDetail.vue'
 import ServiceConfirm from '@/views/service/ServiceConfirm.vue'
+import ServiceResponseList from '@/views/service/ServiceResponseList.vue'
 import AdminPage from '@/views/stats/AdminPage.vue'
 
 const routes = [
@@ -117,6 +118,14 @@ const routes = [
        path: '/service/confirm/:serviceId',
        name: 'ServiceConfirm',
        component: ServiceConfirm,
+       props: true
+     },
+
+   // 响应列表（需求发布者查看所有响应）
+     {
+       path: '/service/responses/:id',
+       name: 'ServiceResponseList',
+       component: ServiceResponseList,
        props: true
      },
 

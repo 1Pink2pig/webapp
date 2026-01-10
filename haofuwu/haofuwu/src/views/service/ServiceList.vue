@@ -226,7 +226,25 @@ const loadServiceSelfList = async () => {
     } else {
       list = await apiGetMyServiceSelfList()
     }
-    rawList.value = list
+
+    // Normalize different backend/frontend field shapes into a consistent shape used by the UI
+    rawList.value = (Array.isArray(list) ? list : [])
+      .map(item => {
+        // item may come from backend schema (id, need_id, service_type, user_id)
+        const serviceId = item.serviceId ?? item.id ?? item.service_id ?? item.serviceId
+        const needId = item.needId ?? item.need_id ?? item.needId
+        const serviceTypeVal = item.serviceType ?? item.service_type ?? item.serviceType
+        const userId = item.userId ?? item.user_id ?? item.userId
+        return {
+          ...item,
+          serviceId,
+          needId,
+          serviceType: serviceTypeVal,
+          userId,
+          status: Number(item.status)
+        }
+      })
+
     handleFilter()
   } catch (err) {
     ElMessage.error(`加载列表失败：${err.message || '未知错误'}`)
