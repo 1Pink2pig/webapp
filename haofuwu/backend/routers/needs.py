@@ -32,15 +32,9 @@ def create_need(need_in: schemas.NeedCreate, db: Session = Depends(get_db),
         status=int(n.status) if n.status is not None else 0,
         hasResponse=False,
         userId=n.owner_id,
+        userName=current_user.username,
         createTime=n.create_time
     )
-
-
-# 旧写法兼容: POST /api/need/add
-@router.post("/add", response_model=schemas.NeedOut)
-def create_need_backup(need_in: schemas.NeedCreate, db: Session = Depends(get_db),
-                       current_user: models.User = Depends(get_current_user)):
-    return crud.create_need(db, current_user.id, need_in)
 
 
 # ==========================================
@@ -89,6 +83,12 @@ def need_detail(need_id: int, db: Session = Depends(get_db)):
 
     # img_urls is stored as JSON (list) in the model
     img_list = n.img_urls if n.img_urls else []
+    # try to get publisher username from relationship
+    publish_username = None
+    try:
+        publish_username = n.owner.username if getattr(n, 'owner', None) else None
+    except Exception:
+        publish_username = None
     data = {
         "id": n.id,
         "title": n.title,
@@ -99,6 +99,7 @@ def need_detail(need_id: int, db: Session = Depends(get_db)):
         "videoUrl": n.video_url,
         "status": int(n.status) if n.status is not None else 0,
         "userId": n.owner_id,
+        "userName": publish_username,
         "createTime": n.create_time
     }
     return {"code": 200, "msg": "ok", "data": data}

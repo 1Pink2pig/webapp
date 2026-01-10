@@ -48,6 +48,7 @@ class NeedOut(BaseModel):
     status: int
     hasResponse: Optional[bool] = False
     userId: int = 0
+    userName: Optional[str] = None
     createTime: Optional[datetime.datetime] = None
 
     @validator('imgUrls', pre=True, always=True)

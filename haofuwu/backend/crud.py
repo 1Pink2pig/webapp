@@ -78,7 +78,37 @@ def get_need(db: Session, need_id: int):
 
 
 def get_needs(db: Session, skip: int = 0, limit: int = 10):
-    return db.query(models.Need).order_by(models.Need.create_time.desc()).offset(skip).limit(limit).all()
+    # 返回序列化后的 NeedOut 列表，避免 FastAPI 的 response_model 校验失败
+    query = db.query(models.Need).order_by(models.Need.create_time.desc()).offset(skip).limit(limit)
+    needs = query.all()
+
+    results = []
+    for n in needs:
+        img_list = n.img_urls if getattr(n, 'img_urls', None) else []
+        has_resp = False
+        if hasattr(n, 'responses') and n.responses:
+            has_resp = len(n.responses) > 0
+        # get username from relationship if available
+        username = None
+        try:
+            username = n.owner.username if getattr(n, 'owner', None) else None
+        except Exception:
+            username = None
+        results.append(schemas.NeedOut(
+            id=n.id,
+            title=n.title,
+            description=n.description,
+            region=n.region,
+            serviceType=n.service_type,
+            imgUrls=img_list,
+            videoUrl=n.video_url,
+            status=int(n.status) if n.status is not None else 0,
+            hasResponse=has_resp,
+            userId=n.owner_id,
+            userName=username,
+            createTime=n.create_time
+        ))
+    return results
 
 
 def get_needs_my_list(db: Session, user_id: int, keyword: str = None, service_type: str = None):
@@ -102,6 +132,13 @@ def get_needs_my_list(db: Session, user_id: int, keyword: str = None, service_ty
         if hasattr(n, 'responses') and n.responses:
             has_resp = len(n.responses) > 0
 
+        # publisher username
+        username = None
+        try:
+            username = n.owner.username if getattr(n, 'owner', None) else None
+        except Exception:
+            username = None
+
         # 构造 NeedOut 对象
         results.append(schemas.NeedOut(
             id=n.id,
@@ -114,6 +151,7 @@ def get_needs_my_list(db: Session, user_id: int, keyword: str = None, service_ty
             status=int(n.status) if n.status is not None else 0,
             hasResponse=has_resp,
             userId=n.owner_id,
+            userName=username,
             createTime=n.create_time
         ))
     return results
