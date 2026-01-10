@@ -7,7 +7,6 @@ from sqlalchemy import text
 
 Base.metadata.create_all(bind=engine)
 
-# 如果是旧的 SQLite 文件，可能缺少新增列；尝试在启动时补齐这些列，避免查询失败
 try:
     with engine.connect() as conn:
         res = conn.execute(text("PRAGMA table_info('users')"))
@@ -25,14 +24,12 @@ try:
                 try:
                     conn.execute(text(f"ALTER TABLE users ADD COLUMN {col} {col_type}"))
                 except Exception:
-                    # 忽略单条添加失败，继续尝试其它列
                     pass
 except Exception:
     pass
 
 app = FastAPI(title="haofuwu-backend")
 
-# 开发时允许所有来源，避免跨域阻塞前端请求
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
